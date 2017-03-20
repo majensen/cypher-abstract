@@ -44,4 +44,10 @@ $p->clear;
 is $p->N("a:boog:goob")->R("r","TYPE",["",3])->N("b")->as_string, '(a:boog:goob)-[r:TYPE*..3]-(b)', $p->as_string;
 $p->clear;
 is $p->N("a:boog:goob")->R("r","TYPE>",["",3])->N("b")->as_string, '(a:boog:goob)-[r:TYPE*..3]->(b)', $p->as_string;
+$p->clear;
+is $p->N("a:boog:goob")->R("r","TYPE>",["",3], {foo=>"bar"})->N("b")->as_string, '(a:boog:goob)-[r:TYPE*..3 {foo:\'bar\'}]->(b)', $p->as_string;
+is "$p", '(a:boog:goob)-[r:TYPE*..3 {foo:\'bar\'}]->(b)', $p->as_string;
+$p->clear;
+is $p->N("a")->R("<",{foo=>"bar"})->N()->as_string, '(a)<-[{foo:\'bar\'}]-()', $p->as_string;
+
 done_testing;

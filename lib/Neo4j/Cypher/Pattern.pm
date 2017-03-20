@@ -1,7 +1,7 @@
 package Neo4j::Cypher::Pattern;
-#use JSON;
 use strict;
 use warnings;
+use overload '""' => 'as_string';
 
 =head1 SYNOPSIS
 
@@ -117,7 +117,18 @@ sub related_to {
       $str .= "*$$hops[0]..$$hops[1]"
     }
   }
+  if ($props) {
+    my $p;
+    while (my($k,$v) = each %$props) {
+      # escape single quotes
+      $v =~ s/'/\\'/g;
+      push @$p, "$k:'$v'";
+    }
+    $p = join(',',@$p);
+    $str .= " {$p}";
+  }
   $str = "-[$str]-";
+  $str =~ s/\[ \{/[{/;
   if ($dir) {
     if ($dir eq "<") {
       $str = "<$str";
@@ -135,15 +146,21 @@ sub related_to {
 
 sub R {shift->related_to(@_);}
 
+# Class methods
+
 sub path {
   my $self = shift;
   return $self;
 }
 
+sub P {shift->path(@_)}
+
 sub compound {
   my $self = shift;
   return $self;
 }
+
+sub C {shift->compound(@_)}
 
 sub clear { shift->{stmt}=[],1; }
 

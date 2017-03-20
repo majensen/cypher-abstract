@@ -1,0 +1,61 @@
+# check where and how parameters may be used in CYPHER
+
+how SQL::Abstract where works
+
+Initial top level call : $s->where($where)
+- keeps track of all values, inserts placeholders and returns an array of
+  of values along with SQL
+  
+- where() wraps _recurse_where($where)
+
+- $where is interpreted depending on its type:
+-- _recurse_where calls one of
+   _where_ARRAYREF : input array is considered as pairs of elements (lhs => rhs)
+   - for each pair ($lhs => $rhs), $rhs is handled by a _SWITCH_refkind dispatch
+   _where_ARRAYREFREF : input array is literal SQL plus a bind value array (if present)
+   _where_HASHREF : lots of special stuff happens here
+   - $s->{_nested_func_lhs} is checked to see if at top level or deeper
+   _where_SCALAR : literal SQL (at top level)
+   _where_SCALARREF : literal SQL (at top level)
+
+
+utility function _SWITCH_refkind($thing, $hash_of_REFKIND_to_coderefs)
+- calls coderef (in 2nd arg) corresponding to the ref kind of $thing, with
+  $thing as argument
+- these are closures; sub {}s generally set $sql and @bind
+- looks like a kludge because the _where_refkinds don't handle all
+  possible events
+
+_where_hashpair_ARRAYREF :
+- factory version takes { $k => \@v } and distributes $k over @v (i.e.,
+  creates an array of hashpairs [ { $k => $v[0] }, {$k => $v[1], ... ])
+  (if first elt of @v is -and or -or, distributes this over rest of @v)
+- this is where we need special beh. for list-domain functions/expressions 
+
+_where_hashpair_HASHREF : lots more special stuff happens here
+- input is { $k => \%v }
+- $s->{_nested_func_lhs} is set _only_ here
+- note that it calls itself recursively to handle hashref values of -and and -or
+-- if set here, is the key of the hashpair ($k)
+- special ops handled only here
+- unary ops handled only here
+- all special beh. handled here (most as "built-in" special ops)
+
+_where_hashpair_SCALARREF
+_where_hashpair_ARRAYREFREF
+_where_hashpair_SCALAR
+_where_hashpair_UNDEF
+
+special behaviors:
+_where_unary_op
+_where_op_ANDOR
+_where_op_NEST
+_where_op_BOOL
+_where_op_IDENT
+_where_op_VALUE
+_where_field_IS
+_where_field_op_ARRAYREF **
+_where_field_BETWEEN
+_where_field_IN
+
+
