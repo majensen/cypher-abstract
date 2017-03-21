@@ -2,6 +2,15 @@
 
 how SQL::Abstract where works
 
+Returning sql:
+- lots of placeholders and bind lists ($sql, @bind)
+-- apply the following to sql and bind list for consistency with rest of code
+- _convert() - apply a conversion function to the arg (like upper() lower())
+- _bindtype() - positional list of values, or a hash of column => value.
+
+-- how to manage named parameters?
+
+
 Initial top level call : $s->where($where)
 - keeps track of all values, inserts placeholders and returns an array of
   of values along with SQL
@@ -35,8 +44,8 @@ _where_hashpair_ARRAYREF :
 _where_hashpair_HASHREF : lots more special stuff happens here
 - input is { $k => \%v }
 - $s->{_nested_func_lhs} is set _only_ here
-- note that it calls itself recursively to handle hashref values of -and and -or
 -- if set here, is the key of the hashpair ($k)
+- note that it calls itself recursively to handle hashref values of -and and -or
 - special ops handled only here
 - unary ops handled only here
 - all special beh. handled here (most as "built-in" special ops)

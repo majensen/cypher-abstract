@@ -108,7 +108,7 @@ my $un_ops = [
 
 my %options = (
   special_ops => $sp_ops,
-  unary_ops => $un_ops,
+#  unary_ops => $un_ops,
   functions => \@functions,
   quote_char => "'",
   escape_char => '\\\\',

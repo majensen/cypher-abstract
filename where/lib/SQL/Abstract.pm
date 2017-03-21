@@ -543,6 +543,7 @@ sub _where_ARRAYREF {
 
       SCALAR    => sub {
         # top-level arrayref with scalars, recurse in pairs
+	$DB::single=1;
         $self->_recurse_where({$el => shift(@clauses)})
       },
 
@@ -628,7 +629,7 @@ sub _where_HASHREF {
 
 sub _where_unary_op {
   my ($self, $op, $rhs) = @_;
-
+  $DB::single=1;
   # top level special ops are illegal in general
   # this includes the -ident/-value ops (dual purpose unary and special)
   puke "Illegal use of top-level '-$op'"
@@ -651,7 +652,27 @@ sub _where_unary_op {
       puke "Illegal handler for operator $op - expecting a method name or a coderef";
     }
   }
-  $DB::single=1;
+  ### <maj> handle functions
+  elsif (grep /^$op$/, @{$self->{functions}}) {
+    return $self->_SWITCH_refkind( $rhs, {
+      SCALAR => sub {
+	puke "Illegal use of top-level '-$op'"
+	  unless defined $self->{_nested_func_lhs};
+	return (
+	  "$op(".$self->_convert('?').")",
+	  $self->_bindtype($self->{_nested_func_lhs}, $rhs)
+	 );
+      },
+      FALLBACK => sub {
+	#try this
+	$self->_recurse_where($rhs);
+      },
+    });
+  }
+  ### </maj>
+  
+
+  
   $self->_debug("Generic unary OP: $op - recursing as function");
 
   $self->_assert_pass_injection_guard($op);
@@ -837,7 +858,7 @@ sub _where_hashpair_ARRAYREF {
     }
 
     my $logic = $op ? substr($op, 1) : '';
-
+    $DB::single=1;
     return $self->_recurse_where(\@distributed, $logic);
   }
   else {
@@ -1081,6 +1102,7 @@ sub _where_hashpair_UNDEF {
 
 ### <maj>
 sub _where_func_HASHREF {
+  $DB::single = 1;
   my ($self, $fn, $val) = @_;
   my ($s, @bind) = $self->_where_HASHREF($val);
   my $sql = "$fn($s)";
@@ -1100,6 +1122,7 @@ sub _where_func_HASHREF {
 # they should just be run though the standard SQL::A routines
 
 sub _where_func_ARRAYREF {
+  $DB::single = 1;
   my ($self, $fn, $val) = @_;
   my ($sql,@fargs,@bind);
   foreach my $farg (@$val) {
