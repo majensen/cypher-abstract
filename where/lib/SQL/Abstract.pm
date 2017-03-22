@@ -543,7 +543,7 @@ sub _where_ARRAYREF {
 
       SCALAR    => sub {
         # top-level arrayref with scalars, recurse in pairs
-	$DB::single=1;
+
         $self->_recurse_where({$el => shift(@clauses)})
       },
 
@@ -598,10 +598,13 @@ sub _where_HASHREF {
 
         # top level vs nested
         # we assume that handled unary ops will take care of their ()s
+	# <maj> also functions </maj>
         $s = "($s)" unless (
           List::Util::first {$op =~ $_->{regex}} @{$self->{unary_ops}}
-            or
-          ( defined $self->{_nested_func_lhs} and $self->{_nested_func_lhs} eq $k )
+	    or
+	  grep /^$op$/, @{$self->{functions}}
+	    or
+	  ( defined $self->{_nested_func_lhs} and $self->{_nested_func_lhs} eq $k )
         );
         ($s, @b);
       }
@@ -629,7 +632,6 @@ sub _where_HASHREF {
 
 sub _where_unary_op {
   my ($self, $op, $rhs) = @_;
-  $DB::single=1;
   # top level special ops are illegal in general
   # this includes the -ident/-value ops (dual purpose unary and special)
   puke "Illegal use of top-level '-$op'"
@@ -663,6 +665,16 @@ sub _where_unary_op {
 	  $self->_bindtype($self->{_nested_func_lhs}, $rhs)
 	 );
       },
+      HASHREF => sub {
+	my ($s, @bind) = $self->_where_HASHREF($rhs);
+	return (
+	  "$op($s)",
+	  @bind
+	 );
+      },
+      ARRAYREF => sub {
+	return  $self->_where_func_ARRAYREF($op, $rhs);
+      },
       FALLBACK => sub {
 	#try this
 	$self->_recurse_where($rhs);
@@ -670,9 +682,7 @@ sub _where_unary_op {
     });
   }
   ### </maj>
-  
 
-  
   $self->_debug("Generic unary OP: $op - recursing as function");
 
   $self->_assert_pass_injection_guard($op);
@@ -688,7 +698,7 @@ sub _where_unary_op {
       );
     },
     FALLBACK => sub {
-      $self->_recurse_where ($rhs)
+      return $self->_recurse_where ($rhs)
     },
   });
 
@@ -858,7 +868,6 @@ sub _where_hashpair_ARRAYREF {
     }
 
     my $logic = $op ? substr($op, 1) : '';
-    $DB::single=1;
     return $self->_recurse_where(\@distributed, $logic);
   }
   else {
@@ -1102,7 +1111,6 @@ sub _where_hashpair_UNDEF {
 
 ### <maj>
 sub _where_func_HASHREF {
-  $DB::single = 1;
   my ($self, $fn, $val) = @_;
   my ($s, @bind) = $self->_where_HASHREF($val);
   my $sql = "$fn($s)";
@@ -1122,7 +1130,6 @@ sub _where_func_HASHREF {
 # they should just be run though the standard SQL::A routines
 
 sub _where_func_ARRAYREF {
-  $DB::single = 1;
   my ($self, $fn, $val) = @_;
   my ($sql,@fargs,@bind);
   foreach my $farg (@$val) {
@@ -1136,16 +1143,16 @@ sub _where_func_ARRAYREF {
 	($s, @b) = $self->_where_HASHREF($farg);
       },
       SCALAR => sub {
-	$s = $farg;
+	# $s = $farg;
 	# maybe:
-	# $s = '?',
-	# @b = ($farg)
+	 $s = $self->_convert('?'),
+	 @b = ($farg)
       },
       SCALARREF => sub {
-	$s = $$farg;
+	# $s = $$farg;
 	# maybe:
-	# $s = '?';
-	# @b = ($$farg);
+	 $s = $self->_convert('?'),
+	 @b = ($$farg)
       },
     });
     push @fargs, $s;
