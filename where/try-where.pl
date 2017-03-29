@@ -16,8 +16,22 @@ use strict;
 };
 #  a.name = extract( x IN coalesce(a,head(b),c) | x.name )
 
+# add other binary (distributable) ops (besides and and or):
+# - XOR, +, -, * , /, %, ^
+# add STARTS WITH, ENDS WITH, CONTAINS string ops
+# deal with the property operator ( . ) - infix binary
+# handle cypher lists ( surrounded by [] ) appropriately
 # weird syntax functions: extract, filter, reduce
-
+# all( var IN list WHERE pred )
+# any( var IN list WHERE pred )
+# none( var IN list WHERE pred )
+# single( var IN list WHERE pred )
+# extract( var IN list | expr)
+# filter( var IN list WHERE pred)
+# reduce ( acc = init, var IN list | expr )
+# timestamp() - no arg
+# e() - no arg
+# pi() - no arg
 
 
 
