@@ -3,9 +3,34 @@ use Carp;
 use strict;
 use warnings;
 
+# issues to solve:
+#  quoting
+#  parens
+my %dispatch;
+my @infix_binary = qw{
+ - / % -in =~ = <> < > <= >=
+ -contains -starts_with -ends_with
+};
+my @infix_distributable = qw{ + * -and -or };
+my @prefix = qw{ -not };
+my @postfix = qw{ -is_null -is_not_null };
+my @function = qw{
+    -abs -ceil -floor -rand -round -sign
+    -e -exp -log -log10 -sqrt -acos -asin -atan -atan2
+    -cos -cot -haversin -pi -radians -sin -tan
+    -left -lower -ltrim -replace -reverse -right
+    -rtrim -split -substring -toString -trim -upper
+ };
+
+@dispatch{@infix_binary} = (\&infix_binary) x @infix_binary;
+@dispatch{@infix_distributable} = (\&infix_distributable) x @infix_distributable;
+@dispatch{@prefix} = (\&prefix) x @prefix;
+@dispatch{@postfix} = (\&postfix) x @postfix;
+@dispatch{@function} = (\&function) x @function;
+
 sub new {
-  
 }
+
 
 sub belch (@) {
   my($func) = (caller(1))[3];
