@@ -1,0 +1,29 @@
+in SQLA have the following syntactical rules. Want to rewrite the input data structures in canonical, lisp-like form for peeling.
+
+arrays:
+- first elt an operator (i.e., starts with dash or non-alpha char) => rest of array are
+- form: [ -op => @args ]
+** canonical: [ -op => canonical(@args) ]
+- first elt a literal - whole array is just an array. (but in canonical lisp-like form, op = -list)
+- form [ $lit, @args ]
+** canonical: [ -list => $lit, canonical(@args) ]
+
+hashes:
+- key an operator => value is its argument
+= form: { $op => $expr }
+** canonical: [ $op => canonical($expr) ]
+- key a literal => key is a rhs of an infix operator
+-- if the value is a hash, then keys of the value hash must be infix ops
+--- if the value hash has multiple pairs, then need to join the multiple expressions with the common rhs with a default distributable infix operator (and, or...)
+- form { $lit1 => { $infix_op => $expr }}
+** canonical: [ $infix_op => $lit1, canonical($expr) ]
+- form { $lit => { $infix1 => $expr1, $infix2 => $expr2 } }
+** canonical [ -default_op_hash => [ $infix_1, $lit, canonical($expr1) ], [$infix2, $lit, canonical($expr2)] ]
+-- if the value is an array, then first elt must be infix op
+--- if the infix op is binary (e.g., comparison op), then need to create and join multiple binary expressions with the common rhs using a default distributable infix operator (or, and, ...)
+- form { $lit => [ -infix_binary => $lit1, $lit2 ] }
+** canonical: [ -default_op_array => [ -infix_binary => $lit, $lit1 ], [-infix_binary => $lit, $lit2 ] ]
+--- if the infix op takes multiple args on lhs (e.g., IN), argument (rhs) should be an arrayref, which constitutes the arguments
+- form { $lit => [ -infix => [@args] ] }
+** canonical: [ -infix => $lit, [@args] ]
+

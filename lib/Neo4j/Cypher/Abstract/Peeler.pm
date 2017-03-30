@@ -1,4 +1,4 @@
-package Neo4j::Cypher::Abstract;
+package Neo4j::Cypher::Abstract::Peeler;
 use Carp;
 use strict;
 use warnings;
@@ -28,6 +28,7 @@ my @function = qw{
 my @predicate = qw{ -all -any -none -single -filter};
 my @extract = qw{ -extract };
 my @reduce = qw{ -reduce };
+my @list = qw{ -list }; # returns args in list format
 
 my %dispatch;
 @dispatch{@infix_binary} = (\&infix_binary) x @infix_binary;
@@ -38,6 +39,7 @@ my %dispatch;
 @dispatch{@predicate} = (\&predicate) x @predicate;
 @dispatch{@extract} = (\&extract) x @extract;
 @dispatch{@reduce} = (\&reduce) x @reduce;
+@dispatch{@list} = (\&list) x @list;
 
 sub new {
   my $class = shift;
@@ -152,6 +154,15 @@ sub reduce {
   return _write_op($op)."("."$$args[0] = $$args[1], $$args[2] IN $$args[3] | $$args[4]".")";
 }
 
+sub list {
+  my ($op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  return "[".join(',',@$args)."]";
+}
+
 sub _write_op {
   my ($op) = @_;
   $op =~ s/^-//;
@@ -160,6 +171,38 @@ sub _write_op {
   return join(' ', map { ($c=~/infix|prefix|postfix/) ? uc $_ : $_ } split /_/,$op);
 }
 
+# canonize - rewrite mixed hash/array expressions in canonical array format
+# interpret like SQL::A
+sub canonize {
+  my $self = shift;
+  my ($expr) = @_;
+  my $ret = [];
+  my $do;
+  $do = sub {
+    my ($expr) = @_;
+    for (ref $expr) {
+      !defined && do {
+	return $expr # literal
+      };
+      /REF/ && do {
+	return @$$expr; # literal
+      };
+      /ARRAY/ && do {
+	if (defined $self->{dispatch}{$$expr[0])) { # op
+	  return [ $$expr[0] => map { $do->($_) } @$expr[1..$#$expr] ];
+	}
+	else { # is a list
+	  return [ -list => map { $do->($_) } @$expr ];
+	}
+      };
+      /HASH/ && do { 
+	for (keys
+      };
+    }
+  };
+  $ret = $do->($expr);
+  return $ret;
+}
 
 # peel - recurse $args = [ -op, @args ] to create complete production
 sub peel {
@@ -188,6 +231,5 @@ sub peel {
     puke "Can only peel() arrayrefs or scalar literals";
   }
 }
-
 
 1;
