@@ -93,7 +93,7 @@ Throw when no handler is defined for a given combo.
   the middle of the main code
 
 - single function to handle any generic/default behavior (how to treat
-  dashed operators not specified elsewhere)
+  dashed operators not specified elsewhere) 
 
 Add finished clauses to a stack of some kind, and construct the
 statement in a central place.
@@ -169,14 +169,13 @@ Canonical expressions:
 [ -or => { col1 => { '=' => 'val1'} }, { col2 => {'=' => 'val2'} } ]
 
 really, it's like lisp.
-rpn
 
 { -extract => [ x, ['a','b','c'], { 'x.name' => { '!=' => 'bill' } } ] }
 extract( x IN [a,b,c] | x.name != 'bill' )
 
 arrays:
 - first elt an operator (i.e., starts with dash or non-alpha char) => rest of array are arguments
-- first elt a literal - whole array is just an array.
+- first elt a literal - whole array is just an array. (but in canonical lisp-like form, op = -list)
 
 hashes:
 - key an operator => value is its argument
@@ -206,3 +205,4 @@ multi argument function ( extract( v, list | fn(v)) )
 { col => [ -or => { '=' => 'val1' }, { '=' => 'val2' } ] } equiv
 
 [ -or, [ '=', col => 'val1'], [ '=', col => 'val2' ] ]
+

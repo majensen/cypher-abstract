@@ -29,3 +29,9 @@ hashes:
 - form { $lit => [ -infix => [@args] ] }
 ** canonical: [ -infix => $lit, [@args] ]
 
+nulls
+- form { $lit => undef }
+** canonical: [ -is_null => $lit ]
+- form { $lit => { '!=' => undef } }
+** canonical: [ -is_not_null => $lit ]
+

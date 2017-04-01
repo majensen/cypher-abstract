@@ -14,6 +14,11 @@ sub belch(@);
 # for each operator type (key in %type_table), there
 # should be a handler with the same name
 
+my $ineq_op = '<>';
+my $array_op = '-or';
+my $hash_op = '-and';
+my $implicit_eq_op = '=';
+
 my %type_table = (
   infix_binary => [qw{
 		       - / % -in =~ = <> < > <= >=
@@ -36,14 +41,11 @@ my %type_table = (
   list => [qw( -list )], # returns args in list format
  );
 
-my $array_op = '-or';
-my $hash_op = '-and';
-my $implicit_eq_op = '=';
-
 my %dispatch;
 foreach my $type (keys %type_table) {
+  no strict 'refs';
   my @ops = @{$type_table{$type}};
-  @dispatch{@ops} = ( *$type{CODE} ) x @ops;
+  @dispatch{@ops} = ( *${type}{CODE} ) x @ops;
 }
 
 sub new {
@@ -194,8 +196,13 @@ sub canonize {
   $do = sub {
     my ($expr, $lhs) = @_;
     for (ref $expr) {
-      !defined && do {
-	return $expr # literal
+      ($_ eq '') && do {
+	if (defined $expr) {
+	  return $expr # literal
+	}
+	else {
+	  puke "undef not interpretable";
+	}
       };
       /REF/ && do {
 	(ref $$expr eq 'ARRAY') && return @$$expr; # literal ???
@@ -209,18 +216,36 @@ sub canonize {
 	elsif (ref $$expr[0] eq 'HASH') { #?
 	  return [ $array_op => map { $do->{$_} } @$expr ];
 	}
-	else () { # is a plain list
-	  return [ -list => map { $do->($_) } @$expr ];
+	else { # is a plain list
+	  if ($lhs) {
+	    # implicit equality over array default op
+	    return [ $array_op => map {
+	      defined ?
+		[ '=', $lhs, $do->($_) ] :
+		  [ -is_null => $lhs ]
+	    } @$expr ];
+	  }
+	  else {
+	    return [ -list => map { $do->($_) } @$expr ];
+	  }
 	}
       };
       /HASH/ && do {
 	my @k = keys %$expr;
 	if (@k == 1) {
+	  my $k = $k[0];
 	  # single hashpair
 	  if ($is_op->($k)) {
 	    $is_op->($k,'infix_binary') && do {
 	      puke "Expected LHS for $k" unless $lhs;
-	      return [ $k => $lhs, $do->($$expr{$k}) ];
+	      if (defined $$expr{$k}) {
+		return [ $k => $lhs, $do->($$expr{$k}) ];
+	      }
+	      else { # IS NOT NULL
+		puke "Can't handle undef as argument to $k" unless
+		  $k eq $ineq_op;
+		return [ -is_not_null => $lhs ];
+	      }
 	    };
 	    $is_op->($k,'function') && do {
 	      return [ $k => $do->($$expr{$k}) ];
@@ -230,27 +255,34 @@ sub canonize {
 	  elsif (ref($$expr{$k}) &&
 		   ref($$expr{$k}) ne 'REF') {
 	    # $k is an LHS
-	    return $do->($$expr[$k], $k);
+	    return $do->($$expr{$k}, $k);
 	  }
 	  else {
 	    # implicit equality
-	    return [ $implicit_eq_op => $k, $do->($$expr{$k}) ]
+	    if (defined $$expr{$k}) {
+	      return [ $implicit_eq_op => $do->($$expr{$k}, $k) ];
+	    }
+	    else { # IS NULL
+	      return [ -is_null => $k ];
+	    }
 	  }
 	}
 	else {
 	  # >1 hashpair
 	  # all keys are ops, or none is - otherwise barf
-	  if ( all { $is_op->($k, 'infix_binary') } @k ) {
+	  if ( all { $is_op->($_, 'infix_binary') } @k ) {
 	    puke "No LHS provided for implict $hash_op" unless defined $lhs;
 	    # distribute lhs over infix-rhs, combine with $hash_op
 	    return [ $hash_op => map {
-	      [ $k => $lhs, $do->($$expr{$k}) ]
+	      [ $_ => $lhs, $do->($$expr{$_}) ]
 	    } @k ];
 	  }
-	  elsif ( none { $is_op->($k) } @k ) {
+	  elsif ( none { $is_op->($_) } @k ) {
 	    # distribute $hash_op over implicit equality
 	    return [ $hash_op => map {
-	      [ $implicit_eq_op => $_, $do->($$expr{$_}) ] #need $rhs poss.?
+	      defined $$expr{$_} ? 
+		[ $implicit_eq_op => $_, $do->($$expr{$_}) ] :
+		[ -is_null => $_ ]
 	    } @k ];
 	  }
 	  else {
