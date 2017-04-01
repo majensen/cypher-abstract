@@ -1,5 +1,6 @@
 package Neo4j::Cypher::Abstract::Peeler;
 use Carp;
+use List::Util qw(all none);
 use strict;
 use warnings;
 
@@ -10,36 +11,40 @@ use warnings;
 sub puke(@);
 sub belch(@);
 
-my @infix_binary = qw{
- - / % -in =~ = <> < > <= >=
- -contains -starts_with -ends_with};
-my @infix_distributable = qw{ + * -and -or };
-my @prefix = qw{ -not };
-my @postfix = qw{ -is_null -is_not_null };
-my @function = qw{
-    ()
-    -abs -ceil -floor -rand -round -sign
-    -e -exp -log -log10 -sqrt -acos -asin -atan -atan2
-    -cos -cot -haversin -pi -radians -sin -tan
-    -left -lower -ltrim -replace -reverse -right
-    -rtrim -split -substring -toString -trim -upper
-    -length -size -type -id -coalesce -head -last
-    -labels -nodes -relationships -keys -tail -range};
-my @predicate = qw{ -all -any -none -single -filter};
-my @extract = qw{ -extract };
-my @reduce = qw{ -reduce };
-my @list = qw{ -list }; # returns args in list format
+# for each operator type (key in %type_table), there
+# should be a handler with the same name
+
+my %type_table = (
+  infix_binary => [qw{
+		       - / % -in =~ = <> < > <= >=
+		       -contains -starts_with -ends_with}],
+  infix_distributable => [qw{ + * -and -or }],
+  prefix => [qw{ -not }],
+  postfix => [qw{ -is_null -is_not_null }],
+  function => [qw{
+		   ()
+		   -abs -ceil -floor -rand -round -sign
+		   -e -exp -log -log10 -sqrt -acos -asin -atan -atan2
+		   -cos -cot -haversin -pi -radians -sin -tan
+		   -left -lower -ltrim -replace -reverse -right
+		   -rtrim -split -substring -toString -trim -upper
+		   -length -size -type -id -coalesce -head -last
+		   -labels -nodes -relationships -keys -tail -range}],
+  predicate => [qw{ -all -any -none -single -filter}],
+  extract => [qw{ -extract }],
+  reduce => [qw{ -reduce }],
+  list => [qw( -list )], # returns args in list format
+ );
+
+my $array_op = '-or';
+my $hash_op = '-and';
+my $implicit_eq_op = '=';
 
 my %dispatch;
-@dispatch{@infix_binary} = (\&infix_binary) x @infix_binary;
-@dispatch{@infix_distributable} = (\&infix_distributable) x @infix_distributable;
-@dispatch{@prefix} = (\&prefix) x @prefix;
-@dispatch{@postfix} = (\&postfix) x @postfix;
-@dispatch{@function} = (\&function) x @function;
-@dispatch{@predicate} = (\&predicate) x @predicate;
-@dispatch{@extract} = (\&extract) x @extract;
-@dispatch{@reduce} = (\&reduce) x @reduce;
-@dispatch{@list} = (\&list) x @list;
+foreach my $type (keys %type_table) {
+  my @ops = @{$type_table{$type}};
+  @dispatch{@ops} = ( *$type{CODE} ) x @ops;
+}
 
 sub new {
   my $class = shift;
@@ -177,26 +182,81 @@ sub canonize {
   my $self = shift;
   my ($expr) = @_;
   my $ret = [];
-  my $do;
+  my ($do,$is_op);
+  $is_op = sub {
+    if (!$_[1]) {
+      defined $self->{dispatch}{$_[0]};
+    }
+    else {
+      grep /^$_[0]$/, @{$type_table{$_[1]}};
+    }
+  };
   $do = sub {
-    my ($expr) = @_;
+    my ($expr, $lhs) = @_;
     for (ref $expr) {
       !defined && do {
 	return $expr # literal
       };
       /REF/ && do {
-	return @$$expr; # literal
+	(ref $$expr eq 'ARRAY') && return @$$expr; # literal ???
+	(ref $$expr eq '') && return $$expr; # literal
       };
       /ARRAY/ && do {
-	if (defined $self->{dispatch}{$$expr[0])) { # op
+	if ($is_op->($$expr[0])) {
+	  # op
 	  return [ $$expr[0] => map { $do->($_) } @$expr[1..$#$expr] ];
 	}
-	else { # is a list
+	elsif (ref $$expr[0] eq 'HASH') { #?
+	  return [ $array_op => map { $do->{$_} } @$expr ];
+	}
+	else () { # is a plain list
 	  return [ -list => map { $do->($_) } @$expr ];
 	}
       };
-      /HASH/ && do { 
-	for (keys
+      /HASH/ && do {
+	my @k = keys %$expr;
+	if (@k == 1) {
+	  # single hashpair
+	  if ($is_op->($k)) {
+	    $is_op->($k,'infix_binary') && do {
+	      puke "Expected LHS for $k" unless $lhs;
+	      return [ $k => $lhs, $do->($$expr{$k}) ];
+	    };
+	    $is_op->($k,'function') && do {
+	      return [ $k => $do->($$expr{$k}) ];
+	    };
+	    puke "Operator $k not expected";
+	  }
+	  elsif (ref($$expr{$k}) &&
+		   ref($$expr{$k}) ne 'REF') {
+	    # $k is an LHS
+	    return $do->($$expr[$k], $k);
+	  }
+	  else {
+	    # implicit equality
+	    return [ $implicit_eq_op => $k, $do->($$expr{$k}) ]
+	  }
+	}
+	else {
+	  # >1 hashpair
+	  # all keys are ops, or none is - otherwise barf
+	  if ( all { $is_op->($k, 'infix_binary') } @k ) {
+	    puke "No LHS provided for implict $hash_op" unless defined $lhs;
+	    # distribute lhs over infix-rhs, combine with $hash_op
+	    return [ $hash_op => map {
+	      [ $k => $lhs, $do->($$expr{$k}) ]
+	    } @k ];
+	  }
+	  elsif ( none { $is_op->($k) } @k ) {
+	    # distribute $hash_op over implicit equality
+	    return [ $hash_op => map {
+	      [ $implicit_eq_op => $_, $do->($$expr{$_}) ] #need $rhs poss.?
+	    } @k ];
+	  }
+	  else {
+	    puke "Can't handle mix of ops and non-ops in hash keys";
+	  }
+	}
       };
     }
   };
@@ -219,7 +279,7 @@ sub peel {
     my $op = shift @$args;
     puke "'$op' : unknown operator" unless $self->{dispatch}{$op};
     my $expr = $self->{dispatch}{$op}->( $op, [map { $self->peel($_) } @$args] );
-    if (grep /\Q$op\E/, @infix_distributable) {
+    if (grep /\Q$op\E/, @{$type_table{infix_distributable}}) {
       # group
       return "($expr)"
     }
