@@ -51,10 +51,15 @@ my @test_pairs = (
   [ '-in function (list argument)',
     { flintstone => { -in => [ 'fred', 'wilma', 'pebbles' ]  } },
     [ -in => 'flintstone', [ -list => 'fred', 'wilma', 'pebbles'] ] ],
+  [ 'literal as scalar ref',
+    { al => { -contains => \'The quick brown$fox(jumped)' } },
+    [ -contains => 'al', 'The quick brown$fox(jumped)' ] ],
+  [ 'literal as array ref',
+    { al => { -contains => \['The quick brown$fox(jumped)'] } },
+    [ -contains => 'al', 'The quick brown$fox(jumped)' ] ],
  );
 
 for (@test_pairs) {
-#  $DB::single=1;
   is_deeply( $o->canonize(sort_test($$_[1])), $$_[2], $$_[0] );
   1;
 }

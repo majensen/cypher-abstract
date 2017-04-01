@@ -204,9 +204,9 @@ sub canonize {
 	  puke "undef not interpretable";
 	}
       };
-      /REF/ && do {
-	(ref $$expr eq 'ARRAY') && return @$$expr; # literal ???
-	(ref $$expr eq '') && return $$expr; # literal
+      /REF|SCALAR/ && do { # literals
+	($_ eq 'SCALAR') && return $$expr; # literal
+	(ref $$expr eq 'ARRAY') && return $$expr->[0]; # literal ???
       };
       /ARRAY/ && do {
 	if ($is_op->($$expr[0])) {
