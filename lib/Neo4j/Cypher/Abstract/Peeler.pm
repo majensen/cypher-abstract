@@ -7,17 +7,24 @@ use warnings;
 # issues to solve:
 #  quoting
 #  parens
+#  param binding
 
 sub puke(@);
 sub belch(@);
 
+my %config = (
+  bind => 0,
+  hash_op => '-and',
+  array_op => '-or',
+  ineq_op => '<>',
+  implicit_eq_op => '=',
+  quote_lit => "'",
+  esc_quote_lit => "\\",
+  quote_fld => undef,
+);
+
 # for each operator type (key in %type_table), there
 # should be a handler with the same name
-
-my $ineq_op = '<>';
-my $array_op = '-or';
-my $hash_op = '-and';
-my $implicit_eq_op = '=';
 
 my %type_table = (
   infix_binary => [qw{
@@ -50,12 +57,13 @@ foreach my $type (keys %type_table) {
 
 sub new {
   my $class = shift;
-  my ($dispatch) = @_ || \%dispatch;
+  my ($dispatch, $config) = @_;
   if ($dispatch and !(ref $dispatch eq 'HASH')) {
     puke "arg1 must be hashref mapping operators to coderefs (or absent)"
   }
   my $self = {
-    dispatch => $dispatch || {}
+    dispatch => $dispatch || \%dispatch,
+    config => $config || \%config
    };
   bless $self, $class;
 }
@@ -70,116 +78,30 @@ sub puke (@) {
   Carp::croak "[$func] Fatal: ", @_;
 }
 
-sub infix_binary {
-  my ($op, $args) = @_;
-  unless ($op and $args and !ref($op)
-	    and ref($args) eq 'ARRAY'){
-    puke "arg1 must be scalar, arg2 must be arrayref";
-  }
-  unless ( @$args == 2 ) {
-    puke "For $op, arg2 must have length 2";
-  }
-  return join(" ", $$args[0], _write_op($op), $$args[1]);
+sub _dispatch {
+  $_[0]->{dispatch}{$_[1]}->(@_);
 }
 
-sub infix_distributable {
-  my ($op, $args) = @_;
-  unless ($op and $args and !ref($op)
-	    and ref($args) eq 'ARRAY'){
-    puke "arg1 must be scalar, arg2 must be arrayref";
+sub _quote_lit {
+  my $arg = "$_[1]";
+  my $q = $_[0]->{config}{quote_lit};
+  if ($arg =~ /^\s*$q(.*)$q\s*$/) {
+    # already quoted
+    return $arg;
   }
-  $op = _write_op($op);
-  return join(" $op ", @$args);
+  else {
+    my $e = $_[0]->{config}{esc_quote_lit};
+    $arg =~ s/$q/$e$q/g;
+    return $arg;
+  }
 }
 
-sub prefix {
-  my ($op, $args) = @_;
-  unless ($op and $args and !ref($op)
-	    and ref($args) eq 'ARRAY'){
-    puke "arg1 must be scalar, arg2 must be arrayref";
-  }
-  unless (@$args == 1) {
-    puke "For $op, arg2 must have length 1"
-  }
-  return _write_op($op)." ".$$args[0];
+sub _quote_fld { # noop
+  return $_[1];
 }
 
-sub postfix {
-  my ($op, $args) = @_;
-  unless ($op and $args and !ref($op)
-	    and ref($args) eq 'ARRAY'){
-    puke "arg1 must be scalar, arg2 must be arrayref";
-  }
-  unless (@$args == 1) {
-    puke "For $op, arg2 must have length 1"
-  }
-  return $$args[0]." "._write_op($op);
-}
-
-sub function {
-  my ($op, $args) = @_;
-  unless ($op and $args and !ref($op)
-	    and ref($args) eq 'ARRAY'){
-    puke "arg1 must be scalar, arg2 must be arrayref";
-  }
-  return _write_op($op).'('.join(',',@$args).')';
-}
-
-sub predicate {
-  my ($op, $args) = @_;
-  unless ($op and $args and !ref($op)
-	    and ref($args) eq 'ARRAY'){
-    puke "arg1 must be scalar, arg2 must be arrayref";
-  }
-  unless ( @$args == 3 ) {
-    puke "For $op, arg2 must have length 3";
-  }
-  return _write_op($op)."("."$$args[0] IN $$args[1] WHERE $$args[2]".")";
-}
-
-sub extract {
-  my ($op, $args) = @_;
-  unless ($op and $args and !ref($op)
-	    and ref($args) eq 'ARRAY'){
-    puke "arg1 must be scalar, arg2 must be arrayref";
-  }
-  unless ( @$args == 3 ) {
-    puke "For $op, arg2 must have length 3";
-  }
-  return _write_op($op)."("."$$args[0] IN $$args[1] | $$args[2]".")";
-}
-
-sub reduce {
-  my ($op, $args) = @_;
-  unless ($op and $args and !ref($op)
-	    and ref($args) eq 'ARRAY'){
-    puke "arg1 must be scalar, arg2 must be arrayref";
-  }
-  unless ( @$args == 5 ) {
-    puke "For $op, arg2 must have length 5";
-  }
-  return _write_op($op)."("."$$args[0] = $$args[1], $$args[2] IN $$args[3] | $$args[4]".")";
-}
-
-sub list {
-  my ($op, $args) = @_;
-  unless ($op and $args and !ref($op)
-	    and ref($args) eq 'ARRAY'){
-    puke "arg1 must be scalar, arg2 must be arrayref";
-  }
-  return "[".join(',',@$args)."]";
-}
-
-sub _write_op {
-  my ($op) = @_;
-  $op =~ s/^-//;
-  my $c = (caller(1))[3];
-  return '' if ($op eq '()');
-  return join(' ', map { ($c=~/infix|prefix|postfix/) ? uc $_ : $_ } split /_/,$op);
-}
-
-# canonize - rewrite mixed hash/array expressions in canonical array format
-# interpret like SQL::A
+# canonize - rewrite mixed hash/array expressions in canonical lispy
+# array format - interpret like SQL::A
 sub canonize {
   my $self = shift;
   my ($expr) = @_;
@@ -198,15 +120,17 @@ sub canonize {
     for (ref $expr) {
       ($_ eq '') && do {
 	if (defined $expr) {
-	  return $expr # literal
+	  # literal (value?)
+	  return $self->{config}{bind} ? [ -bind => $expr ] : $expr;
 	}
 	else {
 	  puke "undef not interpretable";
 	}
       };
       /REF|SCALAR/ && do { # literals
-	($_ eq 'SCALAR') && return $$expr; # literal
-	(ref $$expr eq 'ARRAY') && return $$expr->[0]; # literal ???
+	($_ eq 'SCALAR') && return $$expr ; 
+	(ref $$expr eq 'ARRAY') && return
+	  $self->{config}{bind} ? [ -bind => $$expr ] : $$expr->[0]; # literal ???
       };
       /ARRAY/ && do {
 	if ($is_op->($$expr[0])) {
@@ -214,12 +138,12 @@ sub canonize {
 	  return [ $$expr[0] => map { $do->($_) } @$expr[1..$#$expr] ];
 	}
 	elsif (ref $$expr[0] eq 'HASH') { #?
-	  return [ $array_op => map { $do->{$_} } @$expr ];
+	  return [ $self->{config}{array_op} => map { $do->{$_} } @$expr ];
 	}
 	else { # is a plain list
 	  if ($lhs) {
 	    # implicit equality over array default op
-	    return [ $array_op => map {
+	    return [ $self->{config}{array_op} => map {
 	      defined ?
 		[ '=', $lhs, $do->($_) ] :
 		  [ -is_null => $lhs ]
@@ -243,7 +167,7 @@ sub canonize {
 	      }
 	      else { # IS NOT NULL
 		puke "Can't handle undef as argument to $k" unless
-		  $k eq $ineq_op;
+		  $k eq $self->{config}{ineq_op};
 		return [ -is_not_null => $lhs ];
 	      }
 	    };
@@ -260,7 +184,7 @@ sub canonize {
 	  else {
 	    # implicit equality
 	    if (defined $$expr{$k}) {
-	      return [ $implicit_eq_op => $do->($$expr{$k}, $k) ];
+	      return [ $self->{config}{implicit_eq_op} => $do->($$expr{$k}, $k) ];
 	    }
 	    else { # IS NULL
 	      return [ -is_null => $k ];
@@ -271,17 +195,17 @@ sub canonize {
 	  # >1 hashpair
 	  # all keys are ops, or none is - otherwise barf
 	  if ( all { $is_op->($_, 'infix_binary') } @k ) {
-	    puke "No LHS provided for implict $hash_op" unless defined $lhs;
+	    puke "No LHS provided for implicit $$self{config}{hash_op}" unless defined $lhs;
 	    # distribute lhs over infix-rhs, combine with $hash_op
-	    return [ $hash_op => map {
+	    return [ $self->{config}{hash_op} => map {
 	      [ $_ => $lhs, $do->($$expr{$_}) ]
 	    } @k ];
 	  }
 	  elsif ( none { $is_op->($_) } @k ) {
 	    # distribute $hash_op over implicit equality
-	    return [ $hash_op => map {
+	    return [ $self->{config}{hash_op} => map {
 	      defined $$expr{$_} ? 
-		[ $implicit_eq_op => $_, $do->($$expr{$_}) ] :
+		[ $self->{config}{implicit_eq_op} => $_, $do->($$expr{$_}) ] :
 		[ -is_null => $_ ]
 	    } @k ];
 	  }
@@ -304,13 +228,13 @@ sub peel {
     return '';
   }
   elsif (!ref $args) { # single literal argument
-    return $args;
+    return $self->_quote_lit($args);
   }
   elsif (ref $args eq 'ARRAY') {
     return '' unless (@$args);
     my $op = shift @$args;
     puke "'$op' : unknown operator" unless $self->{dispatch}{$op};
-    my $expr = $self->{dispatch}{$op}->( $op, [map { $self->peel($_) } @$args] );
+    my $expr = $self->dispatch( $op, [map { $self->peel($_) } @$args] );
     if (grep /\Q$op\E/, @{$type_table{infix_distributable}}) {
       # group
       return "($expr)"
@@ -323,5 +247,125 @@ sub peel {
     puke "Can only peel() arrayrefs or scalar literals";
   }
 }
+
+### writers
+
+sub infix_binary {
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  unless ( @$args == 2 ) {
+    puke "For $op, arg2 must have length 2";
+  }
+  return join(" ", $$args[0], _write_op($op), $$args[1]);
+}
+
+sub infix_distributable {
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  $op = _write_op($op);
+  return join(" $op ", @$args);
+}
+
+sub prefix {
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  unless (@$args == 1) {
+    puke "For $op, arg2 must have length 1"
+  }
+  return _write_op($op)." ".$$args[0];
+}
+
+sub postfix {
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  unless (@$args == 1) {
+    puke "For $op, arg2 must have length 1"
+  }
+  return $$args[0]." "._write_op($op);
+}
+
+sub function {
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  return _write_op($op).'('.join(',',@$args).')';
+}
+
+sub predicate {
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  unless ( @$args == 3 ) {
+    puke "For $op, arg2 must have length 3";
+  }
+  return _write_op($op)."("."$$args[0] IN $$args[1] WHERE $$args[2]".")";
+}
+
+sub extract {
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  unless ( @$args == 3 ) {
+    puke "For $op, arg2 must have length 3";
+  }
+  return _write_op($op)."("."$$args[0] IN $$args[1] | $$args[2]".")";
+}
+
+sub reduce {
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  unless ( @$args == 5 ) {
+    puke "For $op, arg2 must have length 5";
+  }
+  return _write_op($op)."("."$$args[0] = $$args[1], $$args[2] IN $$args[3] | $$args[4]".")";
+}
+
+sub bind { # special
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  return 
+}
+
+sub list { # special
+  my ($self, $op, $args) = @_;
+  unless ($op and $args and !ref($op)
+	    and ref($args) eq 'ARRAY'){
+    puke "arg1 must be scalar, arg2 must be arrayref";
+  }
+  return "[".join(',',@$args)."]";
+}
+
+sub _write_op {
+  my ($op) = @_;
+  $op =~ s/^-//;
+  my $c = (caller(1))[3];
+  return '' if ($op eq '()');
+  return join(' ', map { ($c=~/infix|prefix|postfix/) ? uc $_ : $_ } split /_/,$op);
+}
+
 
 1;
