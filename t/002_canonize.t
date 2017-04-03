@@ -55,10 +55,16 @@ my @test_pairs = (
   [ 'literal as array ref',
     { al => { -contains => \['The quick brown$fox(jumped)'] } },
     [ -contains => 'al', 'The quick brown$fox(jumped)' ] ],
+  [ 'implicit equality over array (-or) among other hash elts',
+    { requestor => 'inna', worker => ['nwiger', 'rcwe', 'sfz'], status => { '<>', 'completed' } },
+    [ -and => [ '=' => 'requestor', 'inna' ], [ '<>' => 'status', 'completed' ], [ -or => [ '=' => 'worker', 'nwiger' ], [ '=' => 'worker', 'rcwe' ], [ '=' => 'worker', 'sfz' ] ] ] ],
+
  );
 
 for (@test_pairs) {
+  $DB::single =1 if $$_[0] =~ /among/;
   is_deeply( $o->canonize(sort_test($$_[1])), $$_[2], $$_[0] );
+  1;
 }
 
 done_testing;

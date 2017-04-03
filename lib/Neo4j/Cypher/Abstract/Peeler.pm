@@ -1,6 +1,7 @@
 package Neo4j::Cypher::Abstract::Peeler;
 use Carp;
 use List::Util qw(all none);
+use Scalar::Util qw(looks_like_number);
 use strict;
 use warnings;
 
@@ -14,8 +15,10 @@ sub belch(@);
 
 my %config = (
   bind => 0,
+  anon_placeholder => '?',
   hash_op => '-and',
   array_op => '-or',
+  list_braces => '[]',
   ineq_op => '<>',
   implicit_eq_op => '=',
   quote_lit => "'",
@@ -57,14 +60,21 @@ foreach my $type (keys %type_table) {
 
 sub new {
   my $class = shift;
-  my ($dispatch, $config) = @_;
-  if ($dispatch and !(ref $dispatch eq 'HASH')) {
-    puke "arg1 must be hashref mapping operators to coderefs (or absent)"
+  my %args = @_;
+  if ($args{dispatch} and !(ref $args{dispatch} eq 'HASH')) {
+    puke "dispatch must be hashref mapping operators to coderefs (or absent)"
+  }
+  if ($args{config} and !(ref $args{config} eq 'HASH')) {
+    puke "config must be hashref defining peeler options"
   }
   my $self = {
-    dispatch => $dispatch || \%dispatch,
-    config => $config || \%config
+    dispatch => $args{dispatch} || \%dispatch,
+    config => $args{config} || \%config
    };
+  # update config elts according to constructor args
+  for (keys %config) {
+    defined $args{$_} and $self->{config}{$_} = $args{$_};
+  }
   bless $self, $class;
 }
 
@@ -85,8 +95,8 @@ sub _dispatch {
 sub _quote_lit {
   my $arg = "$_[1]";
   my $q = $_[0]->{config}{quote_lit};
-  if ($arg =~ /^\s*$q(.*)$q\s*$/) {
-    # already quoted
+  if (looks_like_number $arg or $arg =~ /^\s*$q(.*)$q\s*$/) {
+    # numeric or already quoted
     return $arg;
   }
   else {
@@ -128,9 +138,9 @@ sub canonize {
 	}
       };
       /REF|SCALAR/ && do { # literals
-	($_ eq 'SCALAR') && return $$expr ; 
+	($_ eq 'SCALAR') && return $$expr ; # never bind
 	(ref $$expr eq 'ARRAY') && return
-	  $self->{config}{bind} ? [ -bind => $$expr ] : $$expr->[0]; # literal ???
+	  $self->{config}{bind} ? [ -bind => $$expr ] : $$expr->[0]; #
       };
       /ARRAY/ && do {
 	if ($is_op->($$expr[0])) {
@@ -145,7 +155,7 @@ sub canonize {
 	    # implicit equality over array default op
 	    return [ $self->{config}{array_op} => map {
 	      defined ?
-		[ '=', $lhs, $do->($_) ] :
+		[ $self->{config}{implicit_eq_op} => $lhs, $do->($_) ] :
 		  [ -is_null => $lhs ]
 	    } @$expr ];
 	  }
@@ -156,6 +166,7 @@ sub canonize {
       };
       /HASH/ && do {
 	my @k = keys %$expr;
+	#######
 	if (@k == 1) {
 	  my $k = $k[0];
 	  # single hashpair
@@ -183,14 +194,10 @@ sub canonize {
 	  }
 	  else {
 	    # implicit equality
-	    if (defined $$expr{$k}) {
-	      return [ $self->{config}{implicit_eq_op} => $do->($$expr{$k}, $k) ];
-	    }
-	    else { # IS NULL
-	      return [ -is_null => $k ];
-	    }
+	    return defined $$expr{$k} ? [ $self->{config}{implicit_eq_op} => $k, $do->($$expr{$k}) ] : [ -is_null => $k ];
 	  }
 	}
+	#######
 	else {
 	  # >1 hashpair
 	  # all keys are ops, or none is - otherwise barf
@@ -202,12 +209,10 @@ sub canonize {
 	    } @k ];
 	  }
 	  elsif ( none { $is_op->($_) } @k ) {
-	    # distribute $hash_op over implicit equality
-	    return [ $self->{config}{hash_op} => map {
-	      defined $$expr{$_} ? 
-		[ $self->{config}{implicit_eq_op} => $_, $do->($$expr{$_}) ] :
-		[ -is_null => $_ ]
-	    } @k ];
+###	    # distribute $hash_op over implicit equality
+	    return [ $self->{config}{hash_op} =>
+		       map { $do->( { $_ => $$expr{$_} } ) } @k
+		      ];
 	  }
 	  else {
 	    puke "Can't handle mix of ops and non-ops in hash keys";
@@ -234,7 +239,7 @@ sub peel {
     return '' unless (@$args);
     my $op = shift @$args;
     puke "'$op' : unknown operator" unless $self->{dispatch}{$op};
-    my $expr = $self->dispatch( $op, [map { $self->peel($_) } @$args] );
+    my $expr = $self->_dispatch( $op, [map { $self->peel($_) } @$args] );
     if (grep /\Q$op\E/, @{$type_table{infix_distributable}}) {
       # group
       return "($expr)"
@@ -347,7 +352,8 @@ sub bind { # special
 	    and ref($args) eq 'ARRAY'){
     puke "arg1 must be scalar, arg2 must be arrayref";
   }
-  return 
+  push @{$self->{bind_values}}, $$args[0];
+  return $self->{config}{anon_placeholder};
 }
 
 sub list { # special
@@ -356,7 +362,8 @@ sub list { # special
 	    and ref($args) eq 'ARRAY'){
     puke "arg1 must be scalar, arg2 must be arrayref";
   }
-  return "[".join(',',@$args)."]";
+  my ($l,$r) = split '',$self->{config}{list_braces};
+  return $l.join(',',@$args).$r;
 }
 
 sub _write_op {
@@ -366,6 +373,5 @@ sub _write_op {
   return '' if ($op eq '()');
   return join(' ', map { ($c=~/infix|prefix|postfix/) ? uc $_ : $_ } split /_/,$op);
 }
-
 
 1;
