@@ -119,7 +119,18 @@ sub canonize {
   my ($do,$is_op);
   $is_op = sub {
     if (!$_[1]) {
-      defined $self->{dispatch}{$_[0]};
+      if (!defined $_[0]) {
+	0;
+      }
+      elsif (defined $self->{dispatch}{$_[0]}) {
+	1;
+      }
+      else {
+	puke "Unknown operator '$_[0]'" if (
+	  $_[0]=~/^-|[[:punct:]]/ and !looks_like_number($_[0])
+	 );
+	0;
+      }
     }
     else {
       grep /^$_[0]$/, @{$type_table{$_[1]}};
@@ -148,7 +159,7 @@ sub canonize {
 	  return [ $$expr[0] => map { $do->($_) } @$expr[1..$#$expr] ];
 	}
 	elsif (ref $$expr[0] eq 'HASH') { #?
-	  return [ $self->{config}{array_op} => map { $do->{$_} } @$expr ];
+	  return [ $self->{config}{array_op} => map { $do->($_) } @$expr ];
 	}
 	else { # is a plain list
 	  if ($lhs) {
