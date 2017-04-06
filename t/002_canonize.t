@@ -62,7 +62,6 @@ my @test_pairs = (
  );
 
 for (@test_pairs) {
-  $DB::single =1 if $$_[0] =~ /among/;
   is_deeply( $o->canonize(sort_test($$_[1])), $$_[2], $$_[0] );
   1;
 }

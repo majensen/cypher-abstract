@@ -1,19 +1,20 @@
 package t::SimpleTree;
+use List::Util qw/all/;
 use strict;
 use warnings;
 
 my $distop = qr{[*+]|and|or}i;
 my $binop = qr{[/%-]|[><!]?=|[<>]|xor};
+my $commop = qr{[*+]|and|x?or}i;
 
 sub new {
   my $class = shift;
   my $self = {};
-  return $self, $class;
+  bless $self, $class;
 }
 
 sub parse {
   my ($self, $s) = @_;
-  $DB::single=1;
   my @tok = split /([a-z]*\(|\)|\s+)/, $s;
   @tok = grep { !/^\s*$/ } @tok;
   my $do;
@@ -51,5 +52,47 @@ sub parse {
     return $x;
   };
 
-  return $do->([]);
+  # remove redundant ()
+  my $simp;
+  $simp = sub {
+    my $a = shift;
+    if (ref $a eq 'ARRAY') {
+      if (@$a == 1 and ref $$a[0] eq 'ARRAY') {
+	return $simp->($$a[0]);
+      }
+      return [ map { $simp->($_) } @$a ];
+    }
+    else {
+      return $a;
+    }
+  };
+
+  return $self->{tree} = $simp->( $do->([]) );
+}
+
+sub hash {
+  my $self = shift;
+  $self->{hash} && return $self->{hash};
+  $self->{tree} or die "No tree!";
+  my $do;
+  $do = sub {
+    my $a = shift;
+    if (ref $a eq 'ARRAY') {
+      if ( all { ref eq '' } @$a ) {
+	return $$a[0] =~ /$commop/ ?
+	  join('',$$a[0],sort @{$a}[1..$#$a]) :
+	  join('',@$a);
+      }
+      else {
+	return $$a[0] =~ /$commop/ ?
+	  join('',$$a[0],sort map { $do->($_) } @{$a}[1..$#$a]) :
+	  join('',$$a[0], map { $do->($_) } @{$a}[1..$#$a]) ;
+      }
+    }
+    else {
+      return $a;
+    }
+  };
+
+  $self->{hash} = $do->($self->{tree});
 }
