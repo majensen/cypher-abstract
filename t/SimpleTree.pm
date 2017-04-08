@@ -14,6 +14,7 @@ sub new {
 }
 
 sub parse {
+  # lispify
   my ($self, $s) = @_;
   my @tok = split /([a-z]*\(|\)|\s+)/, $s;
   @tok = grep { !/^\s*$/ } @tok;
@@ -25,20 +26,31 @@ sub parse {
 	return $x;
       }
       elsif ($t eq '(') {
+	# descend
 	push @$x, $do->([]);
       }
       elsif ($t eq ')') {
+	# ascend
 	my $op = $$x[0];
 	return $x;
       }
-      elsif ($t =~ /^([a-z]+)\(/i) { # fn
+      elsif ($t =~ /^([a-z]+)\(/i) {
+	# function
 	my $a = [lc $1];
 	push @$x, $do->([lc $1]);
       }
       elsif ($t =~ /$binop|$distop/) {
 	if ($$x[0] and
-	      $$x[0] !~ /$binop|$distop/) {
+	      $$x[0] !~ /$binop|$distop/) { # operands only so far
+	  # add operator
 	  unshift @$x, $t;
+	}
+	elsif ($$x[0] and
+		 $$x[0] =~ /$distop/ and
+		 $$x[0] eq $t) {
+	  # same operator and distributable
+	  # push the next operand into same list
+	  1; # ignore
 	}
 	else {
 	  $x = [$t, $x];
