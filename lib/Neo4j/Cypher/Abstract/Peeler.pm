@@ -118,11 +118,11 @@ sub canonize {
   my $ret = [];
   my ($do,$is_op);
   $is_op = sub {
+    if (!defined $_[0] || ref $_[0]) {
+      return 0;
+    }
     if (!$_[1]) {
-      if (!defined $_[0]) {
-	0;
-      }
-      elsif (defined $self->{dispatch}{$_[0]}) {
+      if (defined $self->{dispatch}{$_[0]}) {
 	1;
       }
       else {
@@ -136,8 +136,9 @@ sub canonize {
       grep /^$_[0]$/, @{$type_table{$_[1]}};
     }
   };
+  my $level=0;
   $do = sub {
-    my ($expr, $lhs) = @_;
+    my ($expr, $lhs, $arg_of) = @_;
     for (ref $expr) {
       ($_ eq '') && do {
 	if (defined $expr) {
@@ -154,24 +155,69 @@ sub canonize {
 	  $self->{config}{bind} ? [ -bind => $$expr ] : $$expr->[0]; #
       };
       /ARRAY/ && do {
-	if ($is_op->($$expr[0])) {
-	  # op
-	  return [ $$expr[0] => map { $do->($_) } @$expr[1..$#$expr] ];
+	if ($is_op->($$expr[0],'infix_distributable')) {
+	  # handle implicit equality pairs in an array
+	  my $op = shift @$expr;
+	  my (@args,@flat);
+	  # flatten
+	  if (@$expr == 1) {
+	    for (ref($$expr[0])) {
+	      /ARRAY/ && do {
+		@flat = @{$$expr[0]};
+		last;
+	      };
+	      /HASH/ && do {
+		@flat = %{$$expr[0]};
+		last;
+	      };
+	      puke 'Huh?';
+	    };
+	  }
+	  else {
+	    @flat = @$expr; # already flat
+	  }
+	  while (@flat) {
+	    my $elt = shift @flat;
+	    if (!ref $elt) { # scalar means lhs of a pair or another op
+	      push @args, $do->({$elt => shift @flat},undef,$op);
+	    }
+	    else {
+	      push @args, $do->($elt,undef,$op);
+	    }
+	  }
+	  return [$op => @args];
+	}
+	if ($is_op->($$expr[0]) and !$is_op->($$expr[0],'infix_distributable')) {
+	  # some other op
+	  return [ $$expr[0] => map {
+	    $do->($_,undef,$$expr[0])
+	  } @$expr[1..$#$expr] ];
 	}
 	elsif (ref $$expr[0] eq 'HASH') { #?
-	  return [ $self->{config}{array_op} => map { $do->($_) } @$expr ];
+	  return [ $self->{config}{array_op} =>
+		     map { $do->($_,$lhs,$self->{config}{array_op}) } @$expr ];
 	}
 	else { # is a plain list
 	  if ($lhs) {
 	    # implicit equality over array default op
 	    return [ $self->{config}{array_op} => map {
 	      defined ?
-		[ $self->{config}{implicit_eq_op} => $lhs, $do->($_) ] :
-		  [ -is_null => $lhs ]
+		[ $self->{config}{implicit_eq_op} => $lhs,
+		  $do->($_,undef,$self->{config}{implicit_eq_op}) ] :
+		[ -is_null => $lhs ]
 	    } @$expr ];
 	  }
 	  else {
-	    return [ -list => map { $do->($_) } @$expr ];
+	    if ($arg_of and $is_op->($arg_of,'function') ||
+		  $arg_of eq '-in' # kludge
+	       ) {
+	      # function argument - return list itself
+	      return [ -list => map { $do->($_) } @$expr ];
+	    }
+	    else {
+	      # distribute $array_op over implicit equality
+	      return [ $self->{config}{array_op} => @$expr ];
+	    }
 	  }
 	}
       };
@@ -185,7 +231,7 @@ sub canonize {
 	    $is_op->($k,'infix_binary') && do {
 	      puke "Expected LHS for $k" unless $lhs;
 	      if (defined $$expr{$k}) {
-		return [ $k => $lhs, $do->($$expr{$k}) ];
+		return [ $k => $lhs, $do->($$expr{$k},undef,$k) ];
 	      }
 	      else { # IS NOT NULL
 		puke "Can't handle undef as argument to $k" unless
@@ -194,18 +240,39 @@ sub canonize {
 	      }
 	    };
 	    $is_op->($k,'function') && do {
+	      return [ $k => $do->($$expr{$k},undef,$k) ];
+	    };
+	    $is_op->($k,'prefix') && do {
 	      return [ $k => $do->($$expr{$k}) ];
+	    };
+	    $is_op->($k,'infix_distributable') && do {
+	      if (!ref $$expr{$k} && $lhs) {
+		return [ $k => $lhs, $do->($$expr{$k}) ];
+	      }
+	      elsif ( ref $$expr{$k} eq 'HASH' ) {
+		my @ar = %{$$expr{$k}};
+		return $do->([$k=>@ar]); #?
+	      }
+	      elsif ( ref $$expr{$k} eq 'ARRAY') {
+		return  $do->([$k => $$expr{$k}]);
+	      }
+	      else {
+		puke "arg type '".ref($$expr{$k})."' not expected for op '$k'";
+	      }
 	    };
 	    puke "Operator $k not expected";
 	  }
 	  elsif (ref($$expr{$k}) &&
 		   ref($$expr{$k}) ne 'REF') {
 	    # $k is an LHS
-	    return $do->($$expr{$k}, $k);
+	    return $do->($$expr{$k}, $k, undef);
 	  }
 	  else {
 	    # implicit equality
-	    return defined $$expr{$k} ? [ $self->{config}{implicit_eq_op} => $k, $do->($$expr{$k}) ] : [ -is_null => $k ];
+	    return defined $$expr{$k} ?
+	      [ $self->{config}{implicit_eq_op} => $k,
+		$do->($$expr{$k},undef,$self->{config}{implicit_eq_op}) ] :
+	      [ -is_null => $k ];
 	  }
 	}
 	#######
@@ -216,13 +283,13 @@ sub canonize {
 	    puke "No LHS provided for implicit $$self{config}{hash_op}" unless defined $lhs;
 	    # distribute lhs over infix-rhs, combine with $hash_op
 	    return [ $self->{config}{hash_op} => map {
-	      [ $_ => $lhs, $do->($$expr{$_}) ]
+	      [ $_ => $lhs, $do->($$expr{$_},undef,$self->{config}{hash_op}) ]
 	    } @k ];
 	  }
 	  elsif ( none { $is_op->($_) } @k ) {
 ###	    # distribute $hash_op over implicit equality
 	    return [ $self->{config}{hash_op} =>
-		       map { $do->( { $_ => $$expr{$_} } ) } @k
+		       map { $do->( { $_ => $$expr{$_} },undef,undef ) } @k
 		      ];
 	  }
 	  else {
