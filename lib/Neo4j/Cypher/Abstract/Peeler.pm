@@ -179,7 +179,7 @@ sub canonize {
 	  while (@flat) {
 	    my $elt = shift @flat;
 	    if (!ref $elt) { # scalar means lhs of a pair or another op
-	      push @args, $do->({$elt => shift @flat},undef,$op);
+	      push @args, $do->({$elt => shift @flat},$lhs,$op);
 	    }
 	    else {
 	      push @args, $do->($elt,undef,$op);
@@ -216,7 +216,7 @@ sub canonize {
 	    }
 	    else {
 	      # distribute $array_op over implicit equality
-	      return [ $self->{config}{array_op} => @$expr ];
+	      return $do->([ $self->{config}{array_op} => @$expr ]);
 	    }
 	  }
 	}
@@ -231,12 +231,16 @@ sub canonize {
 	    $is_op->($k,'infix_binary') && do {
 	      puke "Expected LHS for $k" unless $lhs;
 	      if (defined $$expr{$k}) {
-		return [ $k => $lhs, $do->($$expr{$k},undef,$k) ];
+		return [ $k => $lhs, $do->($$expr{$k},undef,$k) ]; #?
 	      }
-	      else { # IS NOT NULL
-		puke "Can't handle undef as argument to $k" unless
-		  $k eq $self->{config}{ineq_op};
-		return [ -is_not_null => $lhs ];
+	      else { # IS (NOT) NULL
+		$k eq $self->{config}{ineq_op} && do {
+		  return [ -is_not_null => $lhs ];
+		};
+		$k eq $self->{config}{eq_op} && do {
+		  return [ -is_null => $lhs ];
+		};
+		puke "Can't handle undef as argument to $k";
 	      }
 	    };
 	    $is_op->($k,'function') && do {
