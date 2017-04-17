@@ -24,6 +24,7 @@ my %config = (
   quote_lit => "'",
   esc_quote_lit => "\\",
   quote_fld => undef,
+  safe_identifier => qw/[a-zA-Z_.]+/
 );
 
 # for each operator type (key in %type_table), there
@@ -127,6 +128,7 @@ sub canonize {
       }
       else {
 	puke "Unknown operator '$_[0]'" if (
+	  $_[0] !~ /$$self{config}{safe_identifier}/ and
 	  $_[0]=~/^-|[[:punct:]]/ and !looks_like_number($_[0])
 	 );
 	0;
@@ -182,6 +184,8 @@ sub canonize {
 	      push @args, $do->({$elt => shift @flat},$lhs,$op);
 	    }
 	    else {
+	      next if (ref $elt eq 'ARRAY') && ! scalar @$elt or
+		(ref $elt eq 'HASH') && ! scalar %$elt;
 	      push @args, $do->($elt,undef,$op);
 	    }
 	  }
@@ -237,7 +241,7 @@ sub canonize {
 		$k eq $self->{config}{ineq_op} && do {
 		  return [ -is_not_null => $lhs ];
 		};
-		$k eq $self->{config}{eq_op} && do {
+		$k eq $self->{config}{implicit_eq_op} && do {
 		  return [ -is_null => $lhs ];
 		};
 		puke "Can't handle undef as argument to $k";
@@ -282,23 +286,30 @@ sub canonize {
 	#######
 	else {
 	  # >1 hashpair
-	  # all keys are ops, or none is - otherwise barf
-	  if ( all { $is_op->($_, 'infix_binary') } @k ) {
-	    puke "No LHS provided for implicit $$self{config}{hash_op}" unless defined $lhs;
-	    # distribute lhs over infix-rhs, combine with $hash_op
-	    return [ $self->{config}{hash_op} => map {
-	      [ $_ => $lhs, $do->($$expr{$_},undef,$self->{config}{hash_op}) ]
-	    } @k ];
+	  my @args;
+	  for my $k (@k) {
+	    # all keys are ops, or none is - otherwise barf
+	    if ( $is_op->($k, 'infix_binary') ) {
+	      puke "No LHS provided for implicit $$self{config}{hash_op}" unless defined $lhs;
+	      push @args, $do->({$k => $$expr{$k}},$lhs);
+	      # return [ $self->{config}{hash_op} => map {
+	      #   [ $_ => $lhs, $do->($$expr{$_},undef,$self->{config}{hash_op}) ]
+	      # } @k ];
+	    }
+	    elsif ( $is_op->($k, 'prefix') || $is_op->($k,'function') ) {
+		push @args, [ $k => $do->($$expr{$k},undef, $k) ];
+		# return [ $self->{config}{hash_op} =>
+		# 	       map { $do->( { $_ => $$expr{$_} },undef,undef ) } @k
+		# 	      ];
+	      }
+	      elsif (!$is_op->($k)) {
+		push @args, $do->({$k => $$expr{$k}});
+	      }
+	    else {
+	      puke "Problem handling operator '$k'";
+	    }
 	  }
-	  elsif ( none { $is_op->($_) } @k ) {
-###	    # distribute $hash_op over implicit equality
-	    return [ $self->{config}{hash_op} =>
-		       map { $do->( { $_ => $$expr{$_} },undef,undef ) } @k
-		      ];
-	  }
-	  else {
-	    puke "Can't handle mix of ops and non-ops in hash keys";
-	  }
+	  return [ $self->{config}{hash_op} => @args ];
 	}
       };
     }
