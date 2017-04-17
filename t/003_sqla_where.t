@@ -86,12 +86,28 @@ my @handle_tests = (
         stmt => " ( ( ( priority > ? ) OR ( priority < ? ) ) AND requestor is not null )",
         bind => [qw/3 1/],
     },
-
     {
-        todo => "This is just ridiculous",
+        todo => "or with undef",
         where => {
-            requestor => { '<>', ['-and', undef, ''] },
+	  requestor => { '<>', [undef, ''] }
         },
+        stmt => "( requestor IS NOT NULL OR requestor <> ? )",
+        bind => [''],
+      },
+    {
+        todo => "and with undef",
+        where => {
+	  requestor => [ -and => '<>' => undef, '<>' => '']
+	 },
+        stmt => "( requestor IS NOT NULL AND requestor <> ? )",
+        bind => [''],
+    },
+    {
+        todo => "original not valid for Peeler",
+        where => 
+#	  requestor => { '<>', ['-and', undef, ''] },
+	  [ -and => {requestor => {'<>' => undef}}, {requestor => {'<>' => ''}}]
+        ,
         stmt => "( requestor IS NOT NULL AND requestor <> ? )",
         bind => [''],
     },
@@ -128,7 +144,7 @@ my @handle_tests = (
     },
 
   {
-     todo =>  'this works, but requires hashes in the implicit or array',
+     done =>  'this works, but requires hashes in the implicit or array',
         where => {
           -and => [
             user => 'nwiger',
@@ -145,7 +161,8 @@ my @handle_tests = (
         bind => [qw/nwiger 20 ASIA EURO 50/],
     },
 
-   {
+  {
+       todo => 'this is a weird one',
        where => { -and => [{}, { 'me.id' => '1'}] },
        stmt => "( ( me.id = ? ) )",
        bind => [ 1 ],
@@ -159,7 +176,7 @@ my @handle_tests = (
    },
 
   {
-       todo => "NOT should work",
+       done => "NOT should work",
        where => { -not => { -not => { -not => 'bool2' } } },
        stmt => "( NOT ( NOT ( NOT bool2 ) ) )",
        bind => [],
@@ -168,31 +185,31 @@ my @handle_tests = (
 # Tests for -not
 # Basic tests only
   {
-           todo => "NOT should work",
+           done => "NOT should work",
         where => { -not => { a => 1 } },
         stmt  => "( (NOT a = ?) ) ",
         bind => [ 1 ],
     },
   {
-           todo => "NOT should work",
+           todo => "NOT should work: fix 'mix of ops and nonops'",
         where => { a => 1, -not => { b => 2 } },
         stmt  => "( ( (NOT b = ?) AND a = ? ) ) ",
         bind => [ 2, 1 ],
     },
   {
-           todo => "NOT should work",
+        done  => "NOT should work",
         where => { -not => { a => 1, b => 2, c => 3 } },
         stmt  => "( (NOT ( a = ? AND b = ? AND c = ? )) ) ",
         bind => [ 1, 2, 3 ],
     },
   {
-           todo => "NOT should work",
+           todo => "NOT should work: fix implicit -or",
         where => { -not => [ a => 1, b => 2, c => 3 ] },
         stmt  => "( (NOT ( a = ? OR b = ? OR c = ? )) ) ",
         bind => [ 1, 2, 3 ],
     },
   {
-           todo => "NOT should work",
+           todo => "NOT should work: fix 'mix of ops and nonops'",
         where => { -not => { c => 3, -not => { b => 2, -not => { a => 1 } } } },
         stmt  => "( (NOT ( (NOT ( (NOT a = ?) AND b = ? )) AND c = ? )) ) ",
         bind => [ 1, 2, 3 ],
