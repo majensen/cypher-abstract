@@ -357,7 +357,7 @@ sub infix_binary {
   unless ( @$args == 2 ) {
     puke "For $op, arg2 must have length 2";
   }
-  return join(" ", $$args[0], _write_op($op), $$args[1]);
+  return '('.join(" ", $$args[0], _write_op($op), $$args[1]).')';
 }
 
 sub infix_distributable {

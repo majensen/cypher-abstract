@@ -17,5 +17,7 @@ my $expr2 = $q->parse( '(((b + a + exp(c) and ( ( max(l,m,q) ) or (( m <> ln(2))
 
 is $p->hash, $q->hash;
 is $p->hash, $r->hash;
+ok $p == $q;
+ok !($p != $r);
 
 done_testing;

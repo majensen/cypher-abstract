@@ -5,6 +5,7 @@ use Try::Tiny;
 use lib '../lib';
 use lib 't';
 use lib '..';
+use t::SimpleTree;
 use strict;
 
 # $Carp::Verbose=1;
@@ -13,6 +14,8 @@ my $o = Neo4j::Cypher::Abstract::Peeler->new();
 
 # some examples from SQL::Abstract t/02where.t
 # changes: strict dashed form for operators
+my $p = t::SimpleTree->new;
+my $q = t::SimpleTree->new;
 
 my @handle_tests = (
     {
@@ -222,7 +225,6 @@ for my $t (@handle_tests) {
   my ($got_can, $got_peel);
   my $stmt = $t->{stmt};
   $stmt =~ s/\?/$_/ for @{$t->{bind}};
-  diag $stmt;
   if (!$t->{todo}) {
     try {
       ok $got_can = $o->canonize($t->{where}), 'canonize passed';
@@ -249,7 +251,12 @@ for my $t (@handle_tests) {
     }
   }
   if ($got_peel) {
-    say $got_peel;
+    $p->parse($stmt);
+    $q->parse($got_peel);
+    diag $stmt;
+    diag $got_peel;
+    $DB::single=1;
+    ok $p == $q, "equivalent";
     say;
   }
 }
