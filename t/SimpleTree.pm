@@ -1,4 +1,5 @@
 package t::SimpleTree;
+use Carp qw/croak/;
 use List::Util qw/all/;
 use overload
   '==' => sub { $_[0]->hash eq $_[1]->hash },
@@ -6,9 +7,11 @@ use overload
 use strict;
 use warnings;
 
-my $distop = qr{[*+]|and|or}i;
-my $binop = qr{[/%-]|[><!]?=|[<>]|xor};
-my $commop = qr{[*+]|and|x?or}i;
+my $function = qr{^([a-z]+)\(};
+my $distop = qr{^(:?[*+]|and|or)$}i;
+my $binop = qr{^(:?[/%-]|[><!]?=|<>|xor)$};
+my $op = qr{$function|$distop|$binop};
+my $commop = qr{^[*+]|and|x?or$}i;
 my $norm = { 'is not null' => 'is_not_null',
 	     'is null' => 'is_null' };
 sub new {
@@ -25,53 +28,96 @@ sub parse {
   while (my ($from,$to) = each %$norm) {
     $s =~ s/$from/$to/g;
   }
-  my @tok = split /([a-z]*\(|\)|\s+)/, $s;
+  my @tok = split /([a-z]*\(|\)|[+*\/-]|\s+)/, $s;
   @tok = grep { !/^\s*$/ } @tok;
-  my $do;
-  $do = sub {
-    my ($x) = @_;
-    while (my $t = shift @tok) {
-      if (!defined $t) {
-	return $x;
+
+  my @stack;
+  my @opstack;
+  my $x = [];
+  my $curop = '';
+  while (my $t = shift @tok) {
+    if ($t eq '(') {
+      # descend
+      push @opstack, '(';
+      push @stack, '(';
+    }
+    elsif ($t eq ')') {
+      # ascend
+      my @r;
+      # if (@opstack and $opstack[-1] eq '(') {
+      # 	pop @opstack;
+      # }
+      # else {
+      while (@stack) {
+	my $a = pop @stack;
+	last if $a eq '(';
+	unshift @r, $a;
       }
-      elsif ($t eq '(') {
-	# descend
-	push @$x, $do->([]);
+      if (!@opstack && !@r) {
+	croak "Something is terribly wrong";
       }
-      elsif ($t eq ')') {
-	# ascend
-	my $op = $$x[0];
-	return $x;
+      my $o = pop @opstack;
+      if ($o eq '(') {
+	push @stack, @r;
       }
-      elsif ($t =~ /^([a-z]+)\(/i) {
-	# function
-	my $a = [lc $1];
-	push @$x, $do->([lc $1]);
+      else {
+	push @stack, [$o, @r];
+	pop @opstack if (@opstack and $opstack[-1] eq '(');
       }
-      elsif ($t =~ /$binop|$distop/) {
-	if ($$x[0] and
-	      $$x[0] !~ /$binop|$distop/) { # operands only so far
-	  # add operator
-	  unshift @$x, $t;
+      # }
+    }
+    elsif ($t =~ /$function/i) {
+      # function
+      my $a = lc $1;
+      push @opstack, $a;
+      push @stack, '(';
+    }
+    elsif ($t =~ /$binop|$distop/) { #problem in here
+      if (@opstack) {
+	if ($t =~ /$distop/) {
+	  if ($opstack[-1] eq $t) { # same op
+	    1; # leave it, accumulate operands for distop
+	  }
+	  elsif ($opstack[-1] =~ /$distop/) {
+	    # new dist operator, resolve previous
+	    my @r;
+	    my $a;
+	    while (@stack) {
+	      $a = pop @stack;
+	      last if $a eq '(';
+	      unshift @r, $a;
+	    }
+	    push @stack, $a if $a eq '(';
+	    push @stack, [pop @opstack, @r];
+	    push @opstack, $t;
+	  }
+	  else {
+	    push @opstack, $t;
+	  }
 	}
-	elsif ($$x[0] and
-		 $$x[0] =~ /$distop/ and
-		 $$x[0] eq $t) {
-	  # same operator and distributable
-	  # push the next operand into same list
-	  1; # ignore
-	}
-	else {
-	  $x = [$t, $x];
+	else { # binop, resolve this first
+	  push @opstack, $t;
 	}
       }
       else {
-	# normalize token
-	push @$x, lc $t;
+	push @opstack, $t;
       }
     }
-    return $x;
-  };
+    else { # operand
+      if (@stack) {
+	if (@opstack and $opstack[-1] =~ /$binop/) {
+	  # resolve now
+	  push @stack, [pop @opstack, pop @stack, $t];
+	}
+	else {
+	  push @stack, $t;
+	}
+      }
+      else {
+	push @stack, $t;
+      }
+    }
+  }
 
   # remove redundant ()
   my $simp;
@@ -88,7 +134,7 @@ sub parse {
     }
   };
 
-  return $self->{tree} = $simp->( $do->([]) );
+#  return $self->{tree} = $simp->( $do->([]) );
 }
 
 sub hash {
