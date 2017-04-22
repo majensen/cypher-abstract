@@ -7,6 +7,12 @@ my $p = t::SimpleTree->new();
 my $q = t::SimpleTree->new();
 my $r = t::SimpleTree->new();
 
+$stmt = "( requestor = inna AND status <> completed AND ( ( worker = nwiger ) OR".
+  " ( worker = rcwe ) OR ( worker = (sfz+you) ) ) )";
+
+$DB::single=1;
+$p->parse($stmt);
+
 my $expr1 = $p->parse( 'a + b + exp(c) and ( ( m <> ln(2) ) or ( max(l,m,q) ) )' );
 my $expr2 = $q->parse( '(((a + b + exp(c) and ( (( m <> ln(2)) ) or ( max(l,m,q) ) ))))' );
 my $expr3 = $r->parse( '(((exp(c) + a + b and ( (( m <> ln(2)) ) or ( max(l,m,q) ) ))))' );
