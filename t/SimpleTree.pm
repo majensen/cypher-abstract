@@ -14,6 +14,18 @@ my $op = qr{$function|$distop|$binop};
 my $commop = qr{^[*+]|and|x?or$}i;
 my $norm = { 'is not null' => 'is_not_null',
 	     'is null' => 'is_null' };
+my $SIMP_LIMIT=10;
+
+my @preced = (
+  qr/not/, # negate
+  qr/[+\/%*-]/, # infix
+  qr/([!=><]?=)|(<>)/n, #cmp
+  qr/(and)|(x?or)/n, #logical
+  qr/[,]/, # list separator
+ );
+
+my $ops = join('|',@preced,'[()]','[a-z]+\(');
+
 sub new {
   my $class = shift;
   my $self = {};
@@ -28,113 +40,100 @@ sub parse {
   while (my ($from,$to) = each %$norm) {
     $s =~ s/$from/$to/g;
   }
-  my @tok = split /([a-z]*\(|\)|[+*\/-]|\s+)/, $s;
-  @tok = grep { !/^\s*$/ } @tok;
-
+   @tok = grep { !/^\s*$/ } @tok;
   my @stack;
-  my @opstack;
-  my $x = [];
-  my $curop = '';
-  while (my $t = shift @tok) {
+  while ( my $t = shift @tok ) {
     if ($t eq '(') {
-      # descend
-      push @opstack, '(';
-      push @stack, '(';
+      push @stack, $t;
     }
     elsif ($t eq ')') {
-      # ascend
-      my @r;
-      # if (@opstack and $opstack[-1] eq '(') {
-      # 	pop @opstack;
-      # }
-      # else {
+      my ($a,@r);
       while (@stack) {
-	my $a = pop @stack;
+	$a = pop @stack;
 	last if $a eq '(';
 	unshift @r, $a;
       }
-      if (!@opstack && !@r) {
-	croak "Something is terribly wrong";
-      }
-      my $o = pop @opstack;
-      if ($o eq '(') {
-	push @stack, @r;
-      }
-      else {
-	push @stack, [$o, @r];
-	pop @opstack if (@opstack and $opstack[-1] eq '(');
-      }
-      # }
-    }
-    elsif ($t =~ /$function/i) {
-      # function
-      my $a = lc $1;
-      push @opstack, $a;
-      push @stack, '(';
-    }
-    elsif ($t =~ /$binop|$distop/) { #problem in here
-      if (@opstack) {
-	if ($t =~ /$distop/) {
-	  if ($opstack[-1] eq $t) { # same op
-	    1; # leave it, accumulate operands for distop
-	  }
-	  elsif ($opstack[-1] =~ /$distop/) {
-	    # new dist operator, resolve previous
-	    my @r;
-	    my $a;
-	    while (@stack) {
-	      $a = pop @stack;
-	      last if $a eq '(';
-	      unshift @r, $a;
-	    }
-	    push @stack, $a if $a eq '(';
-	    push @stack, [pop @opstack, @r];
-	    push @opstack, $t;
-	  }
-	  else {
-	    push @opstack, $t;
-	  }
-	}
-	else { # binop, resolve this first
-	  push @opstack, $t;
-	}
+      croak "Mismatched parens" unless (@stack or $a eq '(');
+      my $x = _xpr(@r);
+      if (@stack and $stack[-1] =~ /([a-z]+)\(/) {
+	pop @stack;
+	push @stack, [$1, $x];
       }
       else {
-	push @opstack, $t;
+	push @stack, $x;
       }
     }
-    else { # operand
-      if (@stack) {
-	if (@opstack and $opstack[-1] =~ /$binop/) {
-	  # resolve now
-	  push @stack, [pop @opstack, pop @stack, $t];
+    elsif ($t =~ /[a-z]+\(/) {
+       push @stack, $t, '(';
+    }
+    else {
+      push @stack, $t;
+    }
+  }
+
+  my $ret = (_xpr(@stack))[0];
+  _simp($ret);
+  $ret;
+}
+
+sub _xpr { # no groups
+  my (@tok) = @_;
+  my @stack;
+  for $op (@preced) {
+    while ( my $t = shift @tok ) {
+      if (!ref($t) and $t =~ /$ops/) {
+	push @stack, $t;
+      }
+      else {
+	if ($stack[-1] =~ /$op/) {
+	  push @stack, [pop @stack,  pop @stack, $t]
 	}
 	else {
 	  push @stack, $t;
 	}
       }
-      else {
-	push @stack, $t;
-      }
     }
+    @tok = @stack;
+    last if @tok == 1;
+    @stack = ();
   }
+  croak "Could not completely reduce" unless @tok == 1;
+  return $tok[0];
+}
 
-  # remove redundant ()
-  my $simp;
-  $simp = sub {
-    my $a = shift;
-    if (ref $a eq 'ARRAY') {
-      if (@$a == 1 and ref $$a[0] eq 'ARRAY') {
-	return $simp->($$a[0]);
-      }
-      return [ map { $simp->($_) } @$a ];
+sub _simp {
+  my ($tree) = @_;
+  my $do;
+  my $simp=0;
+  $do = sub {
+    my ($a) = @_;
+    if (!ref $a) {
+      return;
     }
     else {
-      return $a;
+      my $op = $$a[0];
+      my @r;
+      for my $e (@{$a}[1..$#$a]) {
+	if (ref $e and $op eq $$e[0]) {
+	  $simp=1;
+	  push @$a, splice @$e,1;
+	  pop @$e; # now empty
+	}
+      }
+      @$a = grep { ref ? @$_ : $_ } @$a;
+      for my $e (@{$a}[1..$#$a]) {
+	$do->($e);
+      }
     }
   };
-
-#  return $self->{tree} = $simp->( $do->([]) );
+  $do->($a);
+  my $i = 0;
+  while ($simp and (++$i < $SIMP_LIMIT)) {
+    $simp = 0;
+    $do->($a);
+  }
+  warn "re-simp limit hit" if ($i == $SIMP_LIMIT);
+  1;
 }
 
 sub hash {
