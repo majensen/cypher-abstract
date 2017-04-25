@@ -7,13 +7,13 @@ use overload
 use strict;
 use warnings;
 
-my $function = qr{^([a-z]+)\(};
-my $distop = qr{^(:?[*+]|and|or)$}i;
-my $binop = qr{^(:?[/%-]|[><!]?=|<>|xor)$};
-my $op = qr{$function|$distop|$binop};
+# my $function = qr{^([a-z]+)\(};
+# my $distop = qr{^(:?[*+]|and|or)$}i;
+# my $binop = qr{^(:?[/%-]|[><!]?=|<>|xor)$};
+# my $op = qr{$function|$distop|$binop};
 my $commop = qr{^[*+]|and|x?or$}i;
 my $norm = { 'is not null' => 'is_not_null',
-	     'is null' => 'is_null' };
+ 	     'is null' => 'is_null' };
 my $SIMP_LIMIT=10;
 
 my @preced = (
@@ -40,7 +40,8 @@ sub parse {
   while (my ($from,$to) = each %$norm) {
     $s =~ s/$from/$to/g;
   }
-   @tok = grep { !/^\s*$/ } @tok;
+  my @tok = split /\s*($ops)\s*/, ($s);
+  @tok = grep { !/^\s*$/ } @tok;
   my @stack;
   while ( my $t = shift @tok ) {
     if ($t eq '(') {
@@ -73,19 +74,19 @@ sub parse {
 
   my $ret = (_xpr(@stack))[0];
   _simp($ret);
-  $ret;
+  $self->{tree} = $ret;
 }
 
 sub _xpr { # no groups
   my (@tok) = @_;
   my @stack;
-  for $op (@preced) {
+  for my $op (@preced) {
     while ( my $t = shift @tok ) {
       if (!ref($t) and $t =~ /$ops/) {
 	push @stack, $t;
       }
       else {
-	if ($stack[-1] =~ /$op/) {
+	if (@stack and $stack[-1] =~ /$op/) {
 	  push @stack, [pop @stack,  pop @stack, $t]
 	}
 	else {
@@ -126,11 +127,11 @@ sub _simp {
       }
     }
   };
-  $do->($a);
+  $do->($tree);
   my $i = 0;
   while ($simp and (++$i < $SIMP_LIMIT)) {
     $simp = 0;
-    $do->($a);
+    $do->($tree);
   }
   warn "re-simp limit hit" if ($i == $SIMP_LIMIT);
   1;
