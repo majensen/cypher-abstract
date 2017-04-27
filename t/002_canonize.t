@@ -5,7 +5,7 @@ use lib '../lib';
 
 use_ok('Neo4j::Cypher::Abstract::Peeler');
 my $o = Neo4j::Cypher::Abstract::Peeler->new();
-is $o->infix_binary("+", [1, 2]), "1 + 2";
+is $o->infix_binary("+", [1, 2]), "(1 + 2)";
 is $o->infix_distributable("-and", [1, 2,"fred","bob"]), "1 AND 2 AND fred AND bob";
 is $o->prefix("-not", ['a.name']), "NOT a.name";
 is $o->postfix("-is_not_null", ['a.name']), "a.name IS NOT NULL";

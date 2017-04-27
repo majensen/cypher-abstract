@@ -7,24 +7,23 @@ use overload
 use strict;
 use warnings;
 
-# my $function = qr{^([a-z]+)\(};
-# my $distop = qr{^(:?[*+]|and|or)$}i;
-# my $binop = qr{^(:?[/%-]|[><!]?=|<>|xor)$};
-# my $op = qr{$function|$distop|$binop};
 my $commop = qr{^[*+]|and|x?or$}i;
 my $norm = { 'is not null' => 'is_not_null',
  	     'is null' => 'is_null' };
+my %match = (
+  ')' => '(', ']' => '[', '}' => '{'
+ );
 my $SIMP_LIMIT=10;
 
 my @preced = (
   qr/not/, # negate
-  qr/[+\/%*-]/, # infix
+  qr/[+\/%*-]|\bin\b/, # infix
   qr/([!=><]?=)|(<>)/n, #cmp
-  qr/(and)|(x?or)/n, #logical
+  qr/\b(and)\b|\b(x?or)\b/n, #logical
   qr/[,]/, # list separator
  );
 
-my $ops = join('|',@preced,'[()]','[a-z]+\(');
+my $ops = join('|',@preced,'[]{()}[]','[a-z]+\(');
 
 sub new {
   my $class = shift;
@@ -44,17 +43,17 @@ sub parse {
   @tok = grep { !/^\s*$/ } @tok;
   my @stack;
   while ( my $t = shift @tok ) {
-    if ($t eq '(') {
+    if ($t =~ /^[({[]$/) {
       push @stack, $t;
     }
-    elsif ($t eq ')') {
+    elsif ($t =~ /^[])}]$/) {
       my ($a,@r);
       while (@stack) {
 	$a = pop @stack;
-	last if $a eq '(';
+	last if $a eq $match{$t};
 	unshift @r, $a;
       }
-      croak "Mismatched parens" unless (@stack or $a eq '(');
+      croak "Mismatched parens" unless (@stack or $a eq $match{$t});
       my $x = _xpr(@r);
       if (@stack and $stack[-1] =~ /([a-z]+)\(/) {
 	pop @stack;
