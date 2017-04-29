@@ -1,4 +1,5 @@
 package Neo4j::Cypher::Pattern;
+use base Exporter;
 use strict;
 use warnings;
 use overload '""' => 'as_string';
@@ -32,11 +33,17 @@ C();
 
 =cut
 
+our @EXPORT_OK = qw/pattern/;
+
 sub new {
   my $class = shift;
   my $self = {};
   $self->{stmt}=[];
   bless $self, $class;
+}
+
+sub pattern {
+  Neo4j::Cypher::Pattern->new;
 }
 
 sub node {

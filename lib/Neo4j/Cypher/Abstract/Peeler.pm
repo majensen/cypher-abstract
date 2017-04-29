@@ -10,6 +10,8 @@ use warnings;
 #  parens
 #  param binding
 
+my $SQL_ABSTRACT = 1;
+
 sub puke(@);
 sub belch(@);
 
@@ -39,13 +41,17 @@ my %type_table = (
   postfix => [qw{ -is_null -is_not_null }],
   function => [qw{
 		   ()
-		   -abs -ceil -floor -rand -round -sign
+		   -abs -ceil -floor -rand -round -sign -degrees
 		   -e -exp -log -log10 -sqrt -acos -asin -atan -atan2
 		   -cos -cot -haversin -pi -radians -sin -tan
 		   -left -lower -ltrim -replace -reverse -right
 		   -rtrim -split -substring -toString -trim -upper
 		   -length -size -type -id -coalesce -head -last
-		   -labels -nodes -relationships -keys -tail -range}],
+		   -labels -nodes -relationships -keys -tail -range
+		   -collect -count -max -min -percentileCont
+		   -percentileDisc -stDev -stDevP -sum
+		   -shortestPath -allShortestPaths
+	       }],
   predicate => [qw{ -all -any -none -single -filter}],
   extract => [qw{ -extract }],
   reduce => [qw{ -reduce }],
@@ -109,6 +115,15 @@ sub _quote_lit {
 
 sub _quote_fld { # noop
   return $_[1];
+}
+
+sub express {
+  my $self = shift;
+  my $x = $_[0];
+  if ($SQL_ABSTRACT) {
+    $x = $self->canonize($x);
+  }
+  return $self->peel($x);
 }
 
 # canonize - rewrite mixed hash/array expressions in canonical lispy
@@ -342,7 +357,7 @@ sub peel {
     }
   }
   else {
-    puke "Can only peel() arrayrefs or scalar literals";
+    puke "Can only peel() arrayrefs, scalars or literals";
   }
 }
 
