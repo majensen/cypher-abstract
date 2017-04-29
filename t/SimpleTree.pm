@@ -102,6 +102,7 @@ sub _xpr { # no groups
 }
 
 sub _simp {
+  # simplify
   my ($tree) = @_;
   my $do;
   my $simp=0;
@@ -201,9 +202,9 @@ Create a string that captures the structure but sorts arguments of
 commutative operations. The hashes of two trees can be string-compared
 to infer equivalence of the underlying expressions.
 
-=item $t == $s, $t != $s
+=item $t eq $s, $t ne $s
 
-== and != are overloaded to compare the hashes of two trees.
+eq and ne are overloaded to compare the hashes of two trees.
 
 =back
 

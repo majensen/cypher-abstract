@@ -81,6 +81,7 @@ my @handle_tests = (
     },
 
     {
+        skip => 1,
         todo => "This is a kludge, won't fix",
         where => {
             priority  => [ {'>', 3}, {'<', 1} ],
@@ -90,6 +91,7 @@ my @handle_tests = (
         bind => [qw/3 1/],
     },
     {
+        skip => 1,
         todo => "or with undef",
         where => {
 	  requestor => { '<>', [undef, ''] }
@@ -188,7 +190,7 @@ my @handle_tests = (
 # Tests for -not
 # Basic tests only
   {
-           done => "NOT should work",
+           todo => "NOT should work: fix equivalence test",
         where => { -not => { a => 1 } },
         stmt  => "( (NOT a = ?) ) ",
         bind => [ 1 ],
@@ -206,7 +208,6 @@ my @handle_tests = (
         bind => [ 1, 2, 3 ],
     },
   {
-           todo => "NOT should work: fix implicit -or",
         where => { -not => [ a => 1, b => 2, c => 3 ] },
         stmt  => "( (NOT ( a = ? OR b = ? OR c = ? )) ) ",
         bind => [ 1, 2, 3 ],
@@ -224,6 +225,10 @@ $DB::single = 1;
 for my $t (@handle_tests) {
   my ($got_can, $got_peel);
   my $stmt = $t->{stmt};
+  if ($t->{skip}) {
+    diag "skipping ($$t{stmt})";
+    next;
+  }
   $stmt =~ s/\?/$_/ for @{$t->{bind}};
   if (!$t->{todo}) {
     try {
@@ -251,35 +256,21 @@ for my $t (@handle_tests) {
     }
   }
   if ($got_peel) {
-    $p->parse($stmt);
-    $q->parse($got_peel);
-    diag $stmt;
-    diag $got_peel;
-    $DB::single=1;
-    ok $p == $q, "equivalent";
+    try {
+      $p->parse($stmt);
+      $q->parse($got_peel);
+      diag $stmt;
+      diag $got_peel;
+      $DB::single=1;
+      ok $p == $q, "equivalent";
+    } catch {
+      diag "Error in t::SimpleTree";
+      diag "could not completely reduce expression" if /Could not completely reduce/;
+    };
     say;
   }
 }
 
 done_testing;
 
-sub sort_test {
-  my $x = shift;
-  my $do;
-  $do = sub {
-    for (ref $_[0]) {
-      ($_ eq 'HASH') && do {
-	tie my %t, "Tie::IxHash";
-	for my $k (sort keys %{$_[0]}) {
-	  $t{$k} = $do->(${$_[0]}{$k});
-	}
-	return \%t;
-      };
-      ($_ eq 'ARRAY') && do {
-	return [ map { $do->($_) } @{$_[0]} ];
-      };
-      return $_[0];
-    }
-  };
-  $do->($x);
-}
+
