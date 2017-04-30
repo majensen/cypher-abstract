@@ -10,14 +10,25 @@ use warnings;
 #  parens
 #  param binding
 
+# quoting logic:
+# if config:bind = true
+# if anon_placeholder (like ?) is in config, then return literals without
+# quoting in array $obj->bind_values, and the placeholder in the statement
+# if anon_placeholder is undef, then return literals quoted directly in the
+# statement; return named parameters in $obj->parameters
+# 
+# if config:bind false
+# leave tokens and identifiers as-is, no bind_values or parameters
+
+
 my $SQL_ABSTRACT = 1;
 
 sub puke(@);
 sub belch(@);
 
 my %config = (
-  bind => 0,
-  anon_placeholder => '?',
+  bind => 1,
+  anon_placeholder => undef, # '?',
   hash_op => '-and',
   array_op => '-or',
   list_braces => '[]',
@@ -25,6 +36,7 @@ my %config = (
   implicit_eq_op => '=',
   quote_lit => "'",
   esc_quote_lit => "\\",
+  parameter_sigil => qw/^([:$?])|({[^}]+}$)/,
   quote_fld => undef,
   safe_identifier => qw/[a-zA-Z_.]+/
 );
@@ -56,6 +68,7 @@ my %type_table = (
   extract => [qw{ -extract }],
   reduce => [qw{ -reduce }],
   list => [qw( -list )], # returns args in list format
+  bind => [qw( -bind )], # handles parameters and literal quoting
  );
 
 my %dispatch;
@@ -95,6 +108,9 @@ sub puke (@) {
   Carp::croak "[$func] Fatal: ", @_;
 }
 
+sub bind_values { $_[0]->{bind_values} ? @{$_[0]->{bind_values}} : return ; }
+sub parameters { $_[0]->{parameters} ? @{$_[0]->{parameters}} : return ; }
+
 sub _dispatch {
   $_[0]->{dispatch}{$_[1]}->(@_);
 }
@@ -102,14 +118,17 @@ sub _dispatch {
 sub _quote_lit {
   my $arg = "$_[1]";
   my $q = $_[0]->{config}{quote_lit};
-  if (looks_like_number $arg or $arg =~ /^\s*$q(.*)$q\s*$/) {
-    # numeric or already quoted
-    return $arg;
+  if (looks_like_number $arg or
+	$arg =~ /^\s*$q(.*)$q\s*$/ or
+	$arg =~ $_[0]->{config}{parameter_sigil}
+       ) {
+    # numeric, already quoted, or a parameter
+    return "$arg";
   }
   else {
     my $e = $_[0]->{config}{esc_quote_lit};
     $arg =~ s/$q/$e$q/g;
-    return $arg;
+    return "$q$arg$q";
   }
 }
 
@@ -125,6 +144,21 @@ sub express {
   }
   return $self->peel($x);
 }
+
+sub config {
+  my $self = shift;
+  my ($key, $val) = @_;
+  if (!defined $key) {
+    return %{$self->{config}};
+  }
+  elsif (!defined $val) {
+    return $self->{config}{$key};
+  }
+  else {
+    return $self->{config}{$key} = $val;
+  }
+}
+
 
 # canonize - rewrite mixed hash/array expressions in canonical lispy
 # array format - interpret like SQL::A
@@ -341,7 +375,7 @@ sub peel {
     return '';
   }
   elsif (!ref $args) { # single literal argument
-    return $self->_quote_lit($args);
+    return $args;
   }
   elsif (ref $args eq 'ARRAY') {
     return '' unless (@$args);
@@ -460,8 +494,17 @@ sub bind { # special
 	    and ref($args) eq 'ARRAY'){
     puke "arg1 must be scalar, arg2 must be arrayref";
   }
-  push @{$self->{bind_values}}, $$args[0];
-  return $self->{config}{anon_placeholder};
+  if ($$args[0] =~ $self->{config}{parameter_sigil}) {
+    push @{$self->{parameters}}, $$args[0];
+  }
+  else {
+    push @{$self->{bind_values}},
+      $self->{config}{anon_placeholder} ? $$args[0] :
+      $self->_quote_lit($$args[0]);
+  }
+  return $self->{config}{anon_placeholder} ?
+    $self->{config}{anon_placeholder} :
+    $self->_quote_lit($$args[0]);
 }
 
 sub list { # special

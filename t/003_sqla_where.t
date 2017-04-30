@@ -229,9 +229,10 @@ for my $t (@handle_tests) {
     diag "skipping ($$t{stmt})";
     next;
   }
-  $stmt =~ s/\?/$_/ for @{$t->{bind}};
+  $stmt =~ s{\?}{/[0-9]+/ ? "$_" : "'$_'"}e for @{$t->{bind}};
   if (!$t->{todo}) {
     try {
+      $DB::single=1;
       ok $got_can = $o->canonize($t->{where}), 'canonize passed';
       ok $got_peel = $o->peel($got_can), 'peeled';
       1;
