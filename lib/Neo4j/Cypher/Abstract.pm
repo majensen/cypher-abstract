@@ -1,15 +1,16 @@
 package Neo4j::Cypher::Abstract;
 use lib '../../../lib';
 use base Exporter;
-use Neo4j::Cypher::Pattern qw/pattern/;
+use Neo4j::Cypher::Pattern qw/pattern ptn/;
 use Neo4j::Cypher::Abstract::Peeler;
 use Carp;
 use overload
-  '""' => as_string;
+  '""' => as_string,
+  'cmp' => sub { "$_[0]" cmp "$_[1]" };
 use strict;
 use warnings;
 
-our @EXPORT_OK = qw/cypher pattern/;
+our @EXPORT_OK = qw/cypher pattern ptn/;
 our $AUTOLOAD;
 
 sub puke(@);
@@ -17,12 +18,14 @@ sub belch(@);
 
 # let an Abstract object keep its own stacks of clauses
 # rather than clearing an existing Abstract object, get
-# new objects from a factory
+# new objects from a factory = cypher() 
 
 # create, create_unique, match, merge - patterns for args
 # where, set - SQL::A like expression for argument (only assignments make
 #  sense for set)
 # for_each - third arg is a cypher write query
+
+# 'as' - include in the string arguments : "n.name as name"
 
 our %clause_table = (
   read => [qw/match optional_match where start/],
@@ -84,9 +87,9 @@ sub set {
 sub union { $_[0]->_add_clause('union') }
 sub union_all { $_[0]->_add_clause('union_all') }
 
-sub order_by {
+ sub order_by {
   my $self = shift;
-  puke "Need arg1 => identifier" unless defined $_[0]
+  puke "Need arg1 => identifier" unless defined $_[0];
   puke "Need 'asc' or 'desc', not '$_[1]'" if ($_[1] and $_[1] !~ /^asc|desc$/i);
   $self->_add_clause('order_by',@_);
 }
@@ -125,6 +128,27 @@ sub load_csv_with_headers {
   $self->_add_clause('load_csv_with_headers','FROM',$_[0],'AS',$_[1]);
 }
 
+#create_constraint_exist('node', 'label', 'property')
+
+sub create_constraint_exist {
+  my $self = shift;
+  puke "need arg1 => node/reln pattern" unless defined $_[0];
+  puke "need arg2 => label" if (!defined $_[1] || ref $_[1]);
+  puke "need arg2 => property" if (!defined $_[2] || ref $_[2]);
+  $self->_add_clause('create_constraint_on', "($_[0]:$_[1])", 'ASSERT',"exists($_[0].$_[2])");
+}
+
+# create_constraint_unique('node', 'label', 'property')
+sub create_constraint_unique {
+  my $self = shift;
+  puke "need arg1 => node/reln pattern" unless defined $_[0];
+  puke "need arg2 => label" if (!defined $_[1] || ref $_[1]);
+  puke "need arg2 => property" if (!defined $_[2] || ref $_[2]);
+  $self->_add_clause('create_constraint_on', "($_[0]:$_[1])", 'ASSERT',
+		     "$_[0].$_[2]", 'IS UNIQUE');
+}
+
+# create_index('label' => 'property')
 sub create_index {
   my $self = shift;
   puke "need arg1 => node label" if (!defined $_[0] || ref $_[0]);
@@ -132,6 +156,7 @@ sub create_index {
   $self->_add_clause('create_index','ON',":$_[0]($_[1])");
 }
 
+# drop_index('label'=>'property')
 sub drop_index {
   my $self = shift;
   puke "need arg1 => node label" if (!defined $_[0] || ref $_[0]);
@@ -139,6 +164,29 @@ sub drop_index {
   $self->_add_clause('drop_index','ON',":$_[0]($_[1])");
 }
 
+# using_index('identifier', 'label', 'property')
+sub using_index {
+  my $self = shift;
+  puke "need arg1 => identifier" if (!defined $_[0] || ref $_[0]);
+  puke "need arg2 => node label" if (!defined $_[1] || ref $_[1]);
+  puke "need arg3 => node property" if (!defined $_[2] || ref $_[2]);
+  $self->_add_clause('using_index',"$_[0]:$_[1]($_[2])");
+}
+
+# using_scan('identifier' => 'label')
+sub using_scan {
+  my $self = shift;
+  puke "need arg1 => identifier" if (!defined $_[0] || ref $_[0]);
+  puke "need arg2 => node label" if (!defined $_[1] || ref $_[1]);
+  $self->_add_clause('using_scan',"$_[0]:$_[1]");
+}
+
+# using_join('identifier', ...)
+sub using_join {
+  my $self = shift;
+  puke "need arg => identifier" if (!defined $_[0] || ref $_[0]);
+  $self->_add_clause('using_join', 'ON', join(',',@_));
+}
 
 # everything winds up here
 sub _add_clause {
@@ -153,12 +201,12 @@ sub as_string {
   my $self = shift;
   return $self->{string} if ($self->{string} && !$self->{dirty});
   undef $self->{dirty};
-  my $kw = $$_[0];
-  $kw =~ s/_/ /g;
   $self->{string} = join(
     ' ',
     map {
-      join(' ', uc $kw, @{$_}[1..$#$_]);
+      my $kws = shift @{$_};
+      $kws =~ s/_/ /g;
+      join(' ', uc $kws, @{$_});
     } @{$self->{stack}}
    );
   $self->{string} =~ s/(\s)+/$1/g;

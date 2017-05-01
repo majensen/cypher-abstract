@@ -1,39 +1,47 @@
 package Neo4j::Cypher::Pattern;
 use base Exporter;
+use Carp;
 use strict;
 use warnings;
 use overload '""' => 'as_string';
+
+=head1 NAME
+
+Neo4j::Cypher::Pattern - Generate Cypher pattern strings
 
 =head1 SYNOPSIS
 
 # express a cypher pattern
 
-node("varname", labels=>["label1"], props=>{"propname"=>"propval"})->
-  related_to("<typename", props=>{"propname"=>"propval"})->
-  node();
+ node();
+ N(); #alias
+ node("varname");
+ node("varname",["label"],{prop => "value"});
+ node("varname:label");
+ node(["label"],{prop => "value"});
 
-node();
-N();
-node("varname");
-node("varname",["label"],{prop => "value"});
-node("varname:label");
-node(["label"],{prop => "value"});
+ related_to();
+ R(); # alias
+ related_to("varname","typename",[minhops,maxhops],{prop => "value"});
+ related_to("varname:typename");
+ related_to(":typename");
+ related_to("", "typename");
+ # directed relns
+ R("<:typename");
+ R("varname:typename>");
 
-related_to();
-R();
-related_to("varname","typename",[minhops,maxhops],{prop => "value"});
-related_to("varname:typename");
-related_to(":typename");
-related_to("", "typename");
-
-path("varname", $pattern); # path variable assigned to a pattern
-P();
-compound($pattern1, $pattern2); # comma separated patterns
-C();
+ # these return strings
+ $pattern->path('varname'); # path variable assigned to a pattern
+ $pattern->as('varname'); # alias
+ pattern->compound($pattern1, $pattern2); # comma separated patterns
+ pattern->C($pattern1, $pattern2); # alias
 
 =cut
 
-our @EXPORT_OK = qw/pattern/;
+our @EXPORT_OK = qw/pattern ptn/;
+
+sub puke(@);
+sub belch(@);
 
 sub new {
   my $class = shift;
@@ -45,6 +53,17 @@ sub new {
 sub pattern {
   Neo4j::Cypher::Pattern->new;
 }
+
+sub ptn { Neo4j::Cypher::Pattern->new; }
+
+sub path {
+  my $self = shift;
+  puke("Need arg1 => identifier") if (!defined $_[0] || ref($_[0]));
+  return "$_[0] = $self";
+}
+
+# alias for path
+sub as { shift->path(@_) }
 
 sub node {
   # args:
@@ -95,7 +114,7 @@ sub related_to {
   if ($type) {
     ($varname) = split /:/,$varname;
   } else {
-    ($varname, $type) = split /:/,$varname;
+    ($varname, $type) = $varname =~ /([^:]+):?(.*)/;
   }
   my $dir;
   if ($varname) {
@@ -113,6 +132,7 @@ sub related_to {
     }
   }
   my $str = $varname.($type ? ":$type" : "");
+
   if ($hops) {
     if (@$hops == 0) {
       $str.="*";
@@ -153,18 +173,11 @@ sub related_to {
 
 sub R {shift->related_to(@_);}
 
-# Class methods
-
-sub path {
-  my $self = shift;
-  return $self;
-}
-
-sub P {shift->path(@_)}
-
+# 'class' method
+# do pattern->C($pat1, $pat2)
 sub compound {
   my $self = shift;
-  return $self;
+  return join(',',@_);
 }
 
 sub C {shift->compound(@_)}
@@ -177,5 +190,15 @@ sub as_string {
 }
 
 sub pop { pop @{shift->{stmt}}; }
+
+sub belch (@) {
+  my($func) = (caller(1))[3];
+  Carp::carp "[$func] Warning: ", @_;
+}
+
+sub puke (@) {
+  my($func) = (caller(1))[3];
+  Carp::croak "[$func] Fatal: ", @_;
+}
 
 1;
