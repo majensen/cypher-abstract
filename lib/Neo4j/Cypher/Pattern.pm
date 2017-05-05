@@ -154,7 +154,7 @@ sub related_to {
     $p = join(',',@$p);
     $str .= " {$p}";
   }
-  $str = "-[$str]-";
+  $str = ($str ? "-[$str]-" : '--');
   $str =~ s/\[ \{/[{/;
   if ($dir) {
     if ($dir eq "<") {
@@ -171,8 +171,16 @@ sub related_to {
   return $self;
 }
 
-sub R {shift->related_to(@_);}
+sub R {shift->related_to(@_)}
 
+# N('a')->toN('b') -> (a)-->(b)
+# N('a')->fromN('b') -> (a)<--(b)
+sub _N {shift->related_to->node(@_)}
+sub to_N {shift->related_to('>')->node(@_)}
+sub from_N {shift->related_to('<')->node(@_)}
+
+  
+  
 # 'class' method
 # do pattern->C($pat1, $pat2)
 sub compound {
