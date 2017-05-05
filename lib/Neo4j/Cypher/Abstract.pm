@@ -101,6 +101,11 @@ sub unwind {
   $self->_add_clause('unwind',$_[0],'AS',$_[1]);
 }
 
+sub with {
+  my $self = shift;
+  $self->_add_clause('with', join(',',@_));
+}
+
 sub return {
   my $self = shift;
   $self->_add_clause('return', join(',',@_));

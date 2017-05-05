@@ -6,7 +6,7 @@ isa_ok(cypher, 'Neo4j::Cypher::Abstract');
 isa_ok(ptn, 'Neo4j::Cypher::Pattern');
 
 $DB::single=1;
-my $c = cypher->match('(n)')->where({ 'n.name' => 'Fred' })->return('n.spouse');
+ my $c = cypher->match('(n)')->where({ 'n.name' => 'Fred' })->return('n.spouse');
 isa_ok($c, 'Neo4j::Cypher::Abstract');
 
 is "$c", "MATCH (n) WHERE (n.name = 'Fred') RETURN n.spouse";
@@ -20,7 +20,7 @@ is "$c", "MATCH (n) WHERE (n.name = 'Fred') RETURN n.spouse";
 is cypher->match(ptn->N('movie:Movie'))->return('movie.title'),
   'MATCH (movie:Movie) RETURN movie.title', '3.3.1.2';
 
-is cypher->match(ptn->N('director',{name=>'Oliver Stone'})->R()->N('movie'))
+is cypher->match(ptn->N('director',{name=>'Oliver Stone'})->R->N('movie'))
   ->return('movie.title'),
   , "MATCH (director {name:'Oliver Stone'})--(movie) RETURN movie.title",
   '3.3.1.2';
@@ -35,12 +35,22 @@ is cypher->match(ptn->N('wallstreet',{title=>'Wall Street'})->R("<:ACTED_IN|:DIR
 "MATCH (wallstreet {title:'Wall Street'})<-[:ACTED_IN|:DIRECTED]-(person) RETURN person.name",'3.3.1.3';
 
 is cypher->match(ptn->N("a:Movie",{title=>'Wall Street'}))
-  ->optional_match(ptn->N('a')->R("r:ACTS_IN>")->N())
+  ->optional_match(ptn->N('a')->R("r:ACTS_IN>")->N)
   ->return('r'),
   "MATCH (a:Movie {title:'Wall Street'}) OPTIONAL MATCH (a)-[r:ACTS_IN]->() RETURN r",'3.3.2.4';
 
-is cypher->match(ptn->N('a',{name=>'A'}))
+TODO: {
+  local $TODO = 'fix literal quoting';
+  is cypher->match(ptn->N('a',{name=>'A'}))
   ->return('a.age > 30', 'I\'m a literal',ptn->N('a')->R('>')->N()),
   "MATCH (a {name:'A'}) RETURN a.age > 30,'I\'m a literal',(a)-->()",'3.3.4.9';
+}
+
+is cypher->match(ptn->N(a => {name => 'A'})->R('>')->N('b'))
+  ->return_distinct('b'),
+  "MATCH (a {name:'A'})-->(b) RETURN DISTINCT b",'3.3.4.10';
+
+is cypher->match(ptn->N(david => {name=>'David'})->_N('otherPerson')->to_N)->with('otherPerson', 'count(*) AS foaf')->where('foaf > 1')->return('otherPerson.name'),
+  "MATCH (david {name:'David'})--(otherPerson)-->() WITH otherPerson,count(*) AS foaf WHERE foaf > 1 RETURN otherPerson.name";
 
 done_testing;
