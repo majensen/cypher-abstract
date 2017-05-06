@@ -12,6 +12,7 @@ is $o->postfix("-is_not_null", ['a.name']), "a.name IS NOT NULL";
 is $o->function("-sin", [1.5]), "sin(1.5)";
 is $o->function("-coalesce", [1.5, 'mabel','dood']), "coalesce(1.5,mabel,dood)";
 
+$o->config('bind' => 0);
 my @test_pairs = (
   [ 'canonical - no change',
     [ -or => [ '=' => [ -sin => 1.5 ], .005 ], [ '<>' => 5, 4 ]],

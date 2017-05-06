@@ -1,7 +1,7 @@
 package Neo4j::Cypher::Abstract::Peeler;
 use Carp;
 use List::Util qw(all none);
-use Scalar::Util qw(looks_like_number);
+use Scalar::Util qw(looks_like_number blessed);
 use strict;
 use warnings;
 
@@ -56,6 +56,7 @@ my %type_table = (
 		   -abs -ceil -floor -rand -round -sign -degrees
 		   -e -exp -log -log10 -sqrt -acos -asin -atan -atan2
 		   -cos -cot -haversin -pi -radians -sin -tan
+		   -exists -toInt
 		   -left -lower -ltrim -replace -reverse -right
 		   -rtrim -split -substring -toString -trim -upper
 		   -length -size -type -id -coalesce -head -last
@@ -92,8 +93,10 @@ sub new {
     config => $args{config} || \%config
    };
   # update config elts according to constructor args
-  for (keys %config) {
-    defined $args{$_} and $self->{config}{$_} = $args{$_};
+  if (length scalar keys %args) {
+    for (keys %config) {
+      defined $args{$_} and $self->{config}{$_} = $args{$_};
+    }
   }
   bless $self, $class;
 }
@@ -120,9 +123,10 @@ sub _quote_lit {
   my $q = $_[0]->{config}{quote_lit};
   if (looks_like_number $arg or
 	$arg =~ /^\s*$q(.*)$q\s*$/ or
-	$arg =~ $_[0]->{config}{parameter_sigil}
+	$arg =~ $_[0]->{config}{parameter_sigil} or
+	blessed($_[1])
        ) {
-    # numeric, already quoted, or a parameter
+    # numeric, already quoted, a parameter, or an object
     return "$arg";
   }
   else {
@@ -184,14 +188,14 @@ sub canonize {
       }
     }
     else {
-      grep /^$_[0]$/, @{$type_table{$_[1]}};
+      grep /^\Q$_[0]\E$/, @{$type_table{$_[1]}};
     }
   };
   my $level=0;
   $do = sub {
     my ($expr, $lhs, $arg_of) = @_;
     for (ref $expr) {
-      ($_ eq '') && do {
+      ($_ eq '' or blessed($expr)) && do {
 	if (defined $expr) {
 	  # literal (value?)
 	  return $self->{config}{bind} ? [ -bind => $expr ] : $expr;
@@ -320,7 +324,7 @@ sub canonize {
 	    puke "Operator $k not expected";
 	  }
 	  elsif (ref($$expr{$k}) &&
-		   ref($$expr{$k}) ne 'REF') {
+		   ref($$expr{$k}) !~ /^REF|SCALAR$/) {
 	    # $k is an LHS
 	    return $do->($$expr{$k}, $k, undef);
 	  }
@@ -374,7 +378,7 @@ sub peel {
   if (!defined $args) {
     return '';
   }
-  elsif (!ref $args) { # single literal argument
+  elsif (!ref $args or blessed($args)) { # single literal argument
     return $args;
   }
   elsif (ref $args eq 'ARRAY') {

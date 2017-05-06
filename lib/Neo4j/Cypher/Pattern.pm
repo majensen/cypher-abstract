@@ -47,14 +47,18 @@ sub new {
   my $class = shift;
   my $self = {};
   $self->{stmt}=[];
+  if (@_) {
+    my $nq = join('|',@_);
+    $self->{no_quote} = qr/$nq/;
+  }
   bless $self, $class;
 }
 
 sub pattern {
-  Neo4j::Cypher::Pattern->new;
+  Neo4j::Cypher::Pattern->new(@_);
 }
 
-sub ptn { Neo4j::Cypher::Pattern->new; }
+sub ptn { Neo4j::Cypher::Pattern->new(@_); }
 
 sub path {
   my $self = shift;
@@ -89,9 +93,7 @@ sub node {
   if ($props) {
     my $p;
     while (my($k,$v) = each %$props) {
-      # escape single quotes
-      $v =~ s/'/\\'/g;
-      push @$p, "$k:'$v'";
+      push @$p, "$k:".$self->_quote($v);
     }
     $p = join(',',@$p);
     $str .= " {$p}";
@@ -114,7 +116,7 @@ sub related_to {
   if ($type) {
     ($varname) = split /:/,$varname;
   } else {
-    ($varname, $type) = $varname =~ /([^:]+):?(.*)/;
+    ($varname, $type) = $varname =~ /^([^:]*):?(.*)/;
   }
   my $dir;
   if ($varname) {
@@ -147,9 +149,7 @@ sub related_to {
   if ($props) {
     my $p;
     while (my($k,$v) = each %$props) {
-      # escape single quotes
-      $v =~ s/'/\\'/g;
-      push @$p, "$k:'$v'";
+      push @$p, "$k:".$self->_quote($v);
     }
     $p = join(',',@$p);
     $str .= " {$p}";
@@ -179,8 +179,6 @@ sub _N {shift->related_to->node(@_)}
 sub to_N {shift->related_to('>')->node(@_)}
 sub from_N {shift->related_to('<')->node(@_)}
 
-  
-  
 # 'class' method
 # do pattern->C($pat1, $pat2)
 sub compound {
@@ -197,6 +195,17 @@ sub as_string {
   return join('',@{$self->{stmt}});
 }
 
+sub _quote {
+  return $_[1] if (
+    ($_[0]->{no_quote} and $_[1] =~ $_[0]->{no_quote}) or
+      $_[1] =~ /(?:^|\s)\$/ # no quote parameters
+     );
+  return ${$_[1]} if (ref $_[1] eq 'SCALAR');
+  # escape single quotes
+  my $v = $_[1];
+  $v =~ s/'/\\'/g;
+  return "'$v'";
+}
 sub pop { pop @{shift->{stmt}}; }
 
 sub belch (@) {

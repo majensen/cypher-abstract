@@ -3,12 +3,14 @@ use lib '../../../lib';
 use base Exporter;
 use Neo4j::Cypher::Pattern qw/pattern ptn/;
 use Neo4j::Cypher::Abstract::Peeler;
+use Scalar::Util qw/blessed/;
 use Carp;
 use overload
   '""' => as_string,
   'cmp' => sub { "$_[0]" cmp "$_[1]" };
 use strict;
 use warnings;
+
 
 our @EXPORT_OK = qw/cypher pattern ptn/;
 our $AUTOLOAD;
@@ -34,7 +36,7 @@ our %clause_table = (
 	       on_create on_match
 	       create_unique/],
   general => [qw/return order_by limit skip with unwind union
-		 return_distinct
+		 return_distinct with_distinct
 		 call yield/],
   hint => [qw/using_index using_scan using_join/],
   load => [qw/load_csv load_csv_with_headers
@@ -44,7 +46,6 @@ our %clause_table = (
   modifier => [qw/skip limit order_by/]
  );
 our @all_clauses = ( map { @{$clause_table{$_}} } keys %clause_table );
-our $PEELER = Neo4j::Cypher::Abstract::Peeler->new();
 
 sub new {
   my $class = shift;
@@ -56,6 +57,7 @@ sub new {
 sub cypher {
   Neo4j::Cypher::Abstract->new;
 }
+sub available_clauses {no warnings qw/once/; @__PACKAGE__::all_clauses }
 
 sub bind_values { $_[0]->{bind_values} && @{$_[0]->{bind_values}} }
 sub parameters { $_[0]->{parameters} && @{$_[0]->{parameters}} }
@@ -66,32 +68,25 @@ sub where {
   my $self = shift;
   puke "Need arg1 => expression" unless defined $_[0];
   my $arg = $_[0];
-  if (ref $arg) {
-    $arg = $PEELER->express($arg);
-    $self->{bind_values} = [$PEELER->bind_values];
-    $self->{parameters} = [$PEELER->parameters];
-  }
   $self->_add_clause('where',$arg);
-}
-
-sub set {
-  my $self = shift;
-  puke "Need arg1 => assignment expression" unless defined $_[0];
-  my $arg = $_[0];
-  if (ref $arg) {
-    $arg = $PEELER->express($arg);
-  }
-  $self->_add_clause('set',$arg);
 }
 
 sub union { $_[0]->_add_clause('union') }
 sub union_all { $_[0]->_add_clause('union_all') }
 
- sub order_by {
+sub order_by {
   my $self = shift;
   puke "Need arg1 => identifier" unless defined $_[0];
-  puke "Need 'asc' or 'desc', not '$_[1]'" if ($_[1] and $_[1] !~ /^asc|desc$/i);
-  $self->_add_clause('order_by',@_);
+  my @args;
+  while (my $a = shift) {
+    if ($_[0] and $_[0] =~ /^(?:de|a)sc$/i) {
+      push @args, "$a ".uc(shift());
+    }
+    else {
+      push @args, $a;
+    }
+  }
+  $self->_add_clause('order_by',@args);
 }
 
 sub unwind {
@@ -101,22 +96,34 @@ sub unwind {
   $self->_add_clause('unwind',$_[0],'AS',$_[1]);
 }
 
-sub with {
+sub match {
   my $self = shift;
-  $self->_add_clause('with', join(',',@_));
+  # shortcut for a single node identifier, with labels
+  if (@_==1 and $_[0] =~ /^[a-z][a-z0-9_:]*$/i) {
+    $self->_add_clause('match',"($_[0])");
+  }
+  else {
+    $self->_add_clause('match',@_);
+  }
 }
 
-sub return {
+sub create {
   my $self = shift;
-  $self->_add_clause('return', join(',',@_));
+  # shortcut for a single node identifier, with labels
+  if (@_==1 and $_[0] =~ /^[a-z][a-z0-9_:]*$/i) {
+    $self->_add_clause('create',"($_[0])");
+  }
+  else {
+    $self->_add_clause('create',@_);
+  }
 }
 
-sub for_each {
+sub foreach {
   my $self = shift;
   puke "need arg1 => list variable" unless ($_[0] && !ref($_[0]));
   puke "need arg2 => list expr" unless $_[1];
   puke "need arg3 => cypher update stmt" unless $_[2];
-  $self->_add_clause('for_each', $_[0],'IN',$_[1],'|',$_[2]);
+  $self->_add_clause('foreach', $_[0],'IN',$_[1],'|',$_[2]);
 }
 
 sub load_csv {
@@ -198,7 +205,38 @@ sub _add_clause {
   my $self = shift;
   my $clause = shift;
   $self->{dirty} = 1;
-  push @{$self->{stack}}, [$clause, @_];
+  my @clause;
+  push @clause, $clause;
+  if ( $clause =~ /^match|create|merge/ and 
+	 @_==1 and $_[0] =~ /^[a-z][a-z0-9_:]*$/i) {
+    push @clause, "($_[0])";
+  }
+  else {
+    for (@_) {
+      if (ref && !blessed($_)) {
+	my $plr = Neo4j::Cypher::Abstract::Peeler->new();
+	push @clause, $plr->express($_);
+	# kludge
+	if ($clause =~ /^set/) {
+	  # removing enclosing parens from peel
+	  $clause[-1] =~ s/^\s*\(//;
+	  $clause[-1] =~ s/\)\s*$//;
+	}
+	push @{$self->{bind_values}}, $plr->bind_values;
+	push @{$self->{parameters}}, $plr->parameters;
+      }
+      else {
+	push @clause, $_;
+	my @parms = m/(\$[a-z][a-z0-9]*)/ig;
+	push @{$self->{parameters}}, @parms;
+      }
+    }
+  }
+  if ($clause =~ /^return|with|order|set|remove/) {
+    # group args in array so they are separated by commas
+    @clause = (shift @clause, [@clause]);
+  }
+  push @{$self->{stack}}, \@clause;
   return $self;
 }
 
@@ -206,14 +244,21 @@ sub as_string {
   my $self = shift;
   return $self->{string} if ($self->{string} && !$self->{dirty});
   undef $self->{dirty};
-  $self->{string} = join(
-    ' ',
-    map {
-      my $kws = shift @{$_};
-      $kws =~ s/_/ /g;
-      join(' ', uc $kws, @{$_});
-    } @{$self->{stack}}
-   );
+  my @c;
+  for (@{$self->{stack}}) {
+    my ($kws, @arg) = @$_;
+    $kws =~ s/_/ /g;
+    for (@arg) {
+      $_ = join(',',@$_) if ref eq 'ARRAY';
+    }
+    if ($kws =~ /foreach/i) { #kludge for FOREACH
+      push @c, uc($kws)." (".join(' ',@arg).")";
+    }
+    else {
+      push @c, join(' ',uc $kws, @arg);
+    }
+  }
+  $self->{string} = join(' ',@c);
   $self->{string} =~ s/(\s)+/$1/g;
   return $self->{string};
 }

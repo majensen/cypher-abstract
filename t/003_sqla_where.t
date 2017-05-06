@@ -260,12 +260,20 @@ for my $t (@handle_tests) {
     try {
       $p->parse($stmt);
       $q->parse($got_peel);
-      diag $stmt;
-      diag $got_peel;
+#      diag $stmt;
+#      diag $got_peel;
       $DB::single=1;
-      ok $p == $q, "equivalent";
+      if ($p == $q) {
+	pass "equivalent";
+      }
+      else {
+	fail "not equivalent";
+	diag $stmt;
+	diag $got_peel;
+      }
     } catch {
       diag "Error in t::SimpleTree";
+      diag "on $stmt";
       diag "could not completely reduce expression" if /Could not completely reduce/;
     };
     say;
