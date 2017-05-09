@@ -258,7 +258,7 @@ sub canonize {
 	  if ($lhs) {
 	    # implicit equality over array default op
 	    return [ $self->{config}{array_op} => map {
-	      defined ?
+	      defined() ?
 		[ $self->{config}{implicit_eq_op} => $lhs,
 		  $do->($_,undef,$self->{config}{implicit_eq_op}) ] :
 		[ -is_null => $lhs ]

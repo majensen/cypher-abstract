@@ -18,8 +18,8 @@ my $SIMP_LIMIT=10;
 my @preced = (
   qr/not/, # negate
   qr/[+\/%*-]|\bin\b/, # infix
-  qr/([!=><]?=)|(<>)/n, #cmp
-  qr/\b(and)\b|\b(x?or)\b/n, #logical
+  qr/(?:[!=><]?=)|(?:<>)/, #cmp
+  qr/\b(?:and)\b|\b(?:x?or)\b/, #logical
   qr/[,]/, # list separator
  );
 
@@ -121,7 +121,7 @@ sub _simp {
 	  pop @$e; # now empty
 	}
       }
-      @$a = grep { ref ? @$_ : $_ } @$a;
+      @$a = grep { ref() ? @$_ : $_ } @$a;
       for my $e (@{$a}[1..$#$a]) {
 	$do->($e);
       }
