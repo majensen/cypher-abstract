@@ -18,6 +18,8 @@ our $AUTOLOAD;
 sub puke(@);
 sub belch(@);
 
+our $VERSION='0.01';
+
 # let an Abstract object keep its own stacks of clauses
 # rather than clearing an existing Abstract object, get
 # new objects from a factory = cypher() 
@@ -281,6 +283,7 @@ sub puke (@) {
   my($func) = (caller(1))[3];
   Carp::croak "[$func] Fatal: ", @_;
 }
+
 sub DESTROY {}
 
 =head1 NAME
@@ -291,7 +294,240 @@ Neo4j::Cypher::Abstract - Generate Cypher query statements
 
 =head1 DESCRIPTION
 
+When writing code to automate database queries, sometimes it is
+convenient to use a wrapper that generates desired query strings. Then
+the user can think conceptually and avoid having to remember precise
+syntax or write and debug string manipulations. A good wrapper can
+also allow the user to produce query statements dynamically, hide
+dialect details, and may include some simple syntax
+checking. C<SQL::Abstract> is an example of a widely-used wrapper for
+SQL.
+
+The graph database L<Neo4j|https://www.neo4j.com> allows SQL-like
+declarative queries through its query language
+L<Cypher|https://neo4j.com/docs/developer-manual/current/cypher/>. C<Neo4j::Cypher::Abstract>
+is a Cypher wrapper in the spirit of C<SQL::Abstract> that creates
+very general Cypher productions in an intuitive, Perly way.
+
+=head2 Basic idea : stringing clauses together with method calls
+
+A clause is a portion of a complete query statement that plays a
+specific functional role in the statement and is set off by one or
+more reserved words. L<Clauses in
+Cypher|https://neo4j.com/docs/developer-manual/current/cypher/clauses/>
+include reading (e.g., MATCH), writing (CREATE), importing (LOAD CSV), and
+schema (CREATE CONSTRAINT) clauses, among others. They have
+arguments that define the clause's scope of action.
+
+L<Cypher::Abstract|Neo4j::Cypher::Abstract> objects possess methods
+for every Cypher clause. Each method adds its clause, with arguments,
+to the object's internal queue. Every method returns the object
+itself. When an object is rendered as a string, it concatenates its
+clauses to yield the entire query statement.
+
+These features add up to the following idiom. Suppose we want to
+render the Cypher statement
+
+ MATCH (n:Users) WHERE n.name =~ 'Fred.*' RETURN n.manager
+
+In C<Cypher::Abstract>, we do
+
+ $s = Neo4j::Cypher::Abstract->new()->match('n:Users')
+      ->where("n.name =~ 'Fred.*'")->return('n.manager');
+ print "$s;\n"; # "" is overloaded by $s->as_string()
+
+Because you may create many such statements in a program, a short
+alias for the constructor can be imported, and extra variable
+assignments can be avoided.
+
+ use Neo4j::Cypher::Abstract qw/cypher/;
+ use DBI;
+
+ my $dbh = DBI->connect("dbi:Neo4p:http://127.0.0.1:7474;user=foo;pass=bar");
+ my $sth = $dbh->prepare(
+   cypher->match('n:Users')->where("n.name =~ 'Fred.*'")->return('n.manager')
+   );
+ $sth->execute();
+ ...
+
+=head2 Patterns
+
+L<Patterns|https://neo4j.com/docs/developer-manual/current/cypher/syntax/patterns/>
+are representations of subgraphs with constraints that are key
+components of Cypher queries. They have their own syntax and are also
+amenable to wrapping.  In the example L<above|/"Basic idea : stringing
+clauses together with method calls">, C<match()> uses a simple
+built-in shortcut:
+
+ $s->match('n:User') eq $s->match('(n:User)')
+
+where C<(n:User)> is the simple pattern for "all nodes with label
+'User'".  The module L<Neo4j::Cypher::Abstract::Pattern> handles
+complex and arbitrary patterns. It is loaded automatically on C<use
+Neo4j::Cypher::Abstract>. Abstract patterns are written in a similar
+idiom as Cypher statements. They can be used anywhere a string is
+allowed. For example:
+
+ use Neo4j::Cypher::Abstract qw/cypher ptn/;
+
+ ptn->N(':Person',{name=>'Oliver Stone'})->R("r>")->N('movie') eq
+  '(:Person {name:'Oliver Stone'})-[r]->(movie)'
+ $sth = $dbh->prepare(
+    cypher->match(ptn->N(':Person',{name=>'Oliver Stone'})->R("r>")->N('movie'))
+          ->return('type(r)')
+    );
+
+See L<Neo4j::Abstract::Cypher::Pattern> for a full description of how
+to specify patterns.
+
+=head2 WHERE clauses
+
+As in SQL, Cypher has a WHERE clause that is used to filter returned
+results.  Rather than having to create custom strings for common WHERE
+expressions, L<SQL::Abstract> provides an intuitive system for
+constructing valid expressions from Perl data structures made up of
+hash, array, and scalar references. L<Neo4j::Cypher::Abstract>
+contains a new implementation of the L<SQL::Abstract> expression
+"compiler". If the argument to the C<where()> method (or any other
+method, in fact) is an array or hash reference, it is interpreted as
+an expression in L<SQL::Abstract> style. (The parser is a complete
+reimplementation, so some idioms in that style may not result in
+exactly the same productions.)
+
+=head2 Parameters
+
+Parameters in Cypher are named, and given as alphanumeric tokens
+prefixed (sadly) with '$'. The C<Cypher::Abstract> object collects
+these in the order they appear in the complete statement. The list of
+parameters can be recovered with the C<parameters()> method.
+
+ $c = cypher->match('n:Person')->return('n.name')
+            ->skip('$s')->limit('$l');
+ @p = $c->parameters; # @p is ('$s', '$l') /;
+
 =head1 METHODS
+
+=head2 Reading clauses
+
+=over
+
+=item match(@ptns)
+
+=item optional_match(@ptns)
+
+=item where($expr)
+
+=item start($ptn)
+
+=back 
+
+=head2 Writing clauses
+
+=over
+
+=item create(@ptns), create_unique($ptn)
+
+=item merge(@ptns)
+
+=item foreach($running_var => $list, cypher-><update statement>)
+
+=item set()
+
+=item delete(), detach_delete()
+
+=item on_create(), on_match()
+
+=back
+
+=head2 Modifiers
+
+=over
+
+=item limit($num)
+
+=item skip($num)
+
+=item order_by($identifier)
+
+=back
+
+=head2 General clauses
+
+=over
+
+=item return(@items), return_distinct(@items)
+
+=item with(@identifiers), with_distinct(@identifiers)
+
+=item unwind($list => $identifier)
+
+=item union()
+
+=item call()
+
+=item yield()
+
+=back
+
+=head2 Hinting
+
+=over
+
+=item using_index($index)
+
+=item using_scan()
+
+=item using_join($identifier)
+
+=back
+
+=head2 Loading
+
+=over
+
+=item load_csv($file => $identifier), load_csv_with_headers(...)
+
+=back
+
+=head2 Schema
+
+=over
+
+=item create_constraint_exist($node => $label, $property),create_constraint_unique($node => $label, $property)
+
+=item drop_constraint(...)
+
+=item create_index($label => $property), drop_index($label => $property)
+
+=back
+
+=head2 Utility Methods
+
+=over
+
+=item parameters()
+
+Return a list of statement parameters.
+
+=item as_string()
+
+Render the Cypher statement as a string. Overloads C<"">.
+
+=back
+
+=head1 SEE ALSO
+
+L<REST::Neo4p>, L<DBD::Neo4p>, L<SQL::Abstract>
+
+=head1 AUTHOR
+
+ Mark A. Jensen
+ CPAN: MAJENSEN
+ majensen -at- cpan -dot- org
+
+=head1 COPYRIGHT
+
+ (c) 2017 Mark A. Jensen
 
 =cut
 
