@@ -281,6 +281,7 @@ sub puke (@) {
   my($func) = (caller(1))[3];
   Carp::croak "[$func] Fatal: ", @_;
 }
+sub DESTROY {}
 
 =head1 NAME
 
