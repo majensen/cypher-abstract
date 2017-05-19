@@ -5,39 +5,7 @@ use strict;
 use warnings;
 use overload '""' => 'as_string';
 
-=head1 NAME
-
-Neo4j::Cypher::Pattern - Generate Cypher pattern strings
-
-=head1 SYNOPSIS
-
-# express a cypher pattern
-
- node();
- N(); #alias
- node("varname");
- node("varname",["label"],{prop => "value"});
- node("varname:label");
- node(["label"],{prop => "value"});
-
- related_to();
- R(); # alias
- related_to("varname","typename",[minhops,maxhops],{prop => "value"});
- related_to("varname:typename");
- related_to(":typename");
- related_to("", "typename");
- # directed relns
- R("<:typename");
- R("varname:typename>");
-
- # these return strings
- $pattern->path('varname'); # path variable assigned to a pattern
- $pattern->as('varname'); # alias
- pattern->compound($pattern1, $pattern2); # comma separated patterns
- pattern->C($pattern1, $pattern2); # alias
-
-=cut
-
+our $VERSION = '0.1';
 our @EXPORT_OK = qw/pattern ptn/;
 
 sub puke(@);
@@ -218,4 +186,157 @@ sub puke (@) {
   Carp::croak "[$func] Fatal: ", @_;
 }
 
+=head1 NAME
+
+Neo4j::Cypher::Pattern - Generate Cypher pattern strings
+
+=head1 SYNOPSIS
+
+ # express a cypher pattern
+ use Neo4j::Cypher::Pattern qw/ptn/;
+
+ ptn->node();
+ ptn->N(); #alias
+ ptn->N("varname");
+ ptn->N("varname",["label"],{prop => "value"});
+ ptn->N("varname:label");
+ ptn->N(["label"],{prop => "value"});
+
+ ptn->node('a')->related_to()->node('b'); # (a)--(b)
+ ptn->N('a')->R()->N('b'); # alias
+ # additional forms
+ ptn->N('a')->R("varname","typename",[$minhops,$maxhops],{prop => "value"})
+    ->N('b'); # (a)-[varname:typename*minhops..maxhops { prop:"value }]-(b)
+ ptn->N('a')->R("varname:typename")->N('b'); # (a)-[varname:typename]-(b)
+ ptn->N('a')->R(":typename")->N('b'); # (a)-[:typename]-(b)
+ ptn->N('a')->R("", "typename")->N('b'); # (a)-[:typename]-(b)
+ # directed relns
+ ptn->N('a')->R("<:typename")->N('b'); # (a)<-[:typename]-(b)
+ ptn->N('a')->R("varname:typename>")->N('b'); # (a)-[varname:typename]->(b)
+
+ # these return strings
+ $pattern->path('varname'); # path variable assigned to a pattern
+ $pattern->as('varname'); # alias
+ ptn->compound($pattern1, $pattern2); # comma separated patterns
+ ptn->C($pattern1, $pattern2); # alias
+
+=head1 DESCRIPTION
+
+The L<Cypher|https://neo4j.com/docs/developer-manual/current/cypher/>
+query language of the graph database L<Neo4j|https://neo4j.com> uses
+L<patterns|https://neo4j.com/docs/developer-manual/current/cypher/syntax/patterns>
+to represent graph nodes and their relationships, for selecting and
+matching in queries. C<Neo4j::Cypher::Pattern> can be used to create
+Cypher pattern productions in Perl in an intuitive way. It is part of
+the L<Neo4j::Cypher::Abstract> distribution.
+
+=head2 Basic idea : produce patterns by chaining method calls
+
+C<Neo4j::Cypher::Pattern> objects possess methods to represent nodes
+and relationships. Each method adds its portion of the pattern, with
+arguments, to the object's internal queue. Every method returns the
+object itself. When an object is rendered as a string, it concatenates
+nodes and relationship productions to yield the entire query statement
+as a string.
+
+These features add up to the following idiom. Suppose we want to
+render the Cypher pattern
+
+ (b {name:"Slate"})<-[:WORKS_FOR]-(a {name:"Fred"})-[:KNOWS]->(c {name:"Barney"})
+
+In C<Neo4j::Cypher::Pattern>, we do
+
+ $p = Neo4j::Cypher::Pattern->new()->N('b',{name=>'Slate')
+      ->R('<:WORKS_FOR')->N('a',{name => 'Fred'})
+      ->R(':KNOWS>')->N('c',{name=>'Barney'});
+ print "$p\n"; # "" is overloaded by $p->as_string()
+
+Because you may create many patterns in a program, a short
+alias for the constructor can be imported, and extra variable
+assignments can be avoided.
+
+ print ptn->N('b',{name=>'Slate'})
+      ->R('<:WORKS_FOR')->N('a',{name => 'Fred'})
+      ->R(':KNOWS>')->N('c',{name=>'Barney'}), "\n";
+
+=head2 Quoting
+
+In pattern productions, values for properties will be quoted by
+default with single quotes (single quotes that are present will be
+escaped) unless the values are numeric.
+
+To prevent quoting Cypher statement list variable names (for example), make the name an argument to the pattern I<constructor>:
+
+ ptn('event')->N('y')->R("<:IN")->N('e:Event'=> { id => 'event.id' });
+
+ # renders (y)<-[:IN]-(e:Event {id:event.id})
+ # rather than (y)<-[:IN]-(e:Event {id:"event.id"})
+
+=head1 METHODS
+
+=over
+
+=item Constructor new()
+
+=item pattern(), ptn()
+
+Exportable aliases for the constructor. Arguments are variable names
+that should not be quoted in rendering values of properties.
+
+=item node(), N()
+
+Render a node. Arguments in any order:
+
+ scalar string: variable name or variable:label
+ array ref: array of node labels
+ hash ref: hash of property => value
+
+=item related_to(), R()
+
+Render a relationship. Arguments in any order:
+
+ scalar string: variable name or variable:type
+ array ref: variable-length pattern:
+   [$minhops, $maxhops] 
+   [] (empty array)- any number of hops
+   [$hops] - exactly $hops
+ hash ref : hash of property => value
+
+=item path(), as()
+
+Render the pattern set equal to a path variable:
+
+ $p = ptn->N('a')->_N('b');
+ print $p->as('pth'); # gives 'pth = (a)--(b)'
+
+=item compound(), C()
+
+Render multiple patterns separated by commas
+
+ ptn->compound( ptn->N('a')->to_N('b'), ptn->N('a')->from_N('c'));
+ # (a)-->(b), (a)<--(c)
+
+=item Shortcuts _N, to_N, from_N
+
+ ptn->N('a')->_N('b'); # (a)--(b)
+ ptn->N('a')->to_N('b'); # (a)-->(b)
+ pth->N('a')->from_N('b'); # (a)<--(b)
+
+=back
+
+=head1 SEE ALSO
+
+L<Neo4j::Cypher::Abstract>
+
+=head1 AUTHOR
+
+ Mark A. Jensen
+ CPAN: MAJENSEN
+ majensen -at- cpan -dot- org
+
+=head1 COPYRIGHT
+
+ (c) 2017 Mark A. Jensen
+
+=cut
 1;

@@ -289,8 +289,7 @@ sub DESTROY {}
 =head1 NAME
 
 Neo4j::Cypher::Abstract - Generate Cypher query statements
-
-=head1 SYNOPSIS
+=head1 SYNOPSIS 
 
 =head1 DESCRIPTION
 
@@ -362,7 +361,7 @@ built-in shortcut:
  $s->match('n:User') eq $s->match('(n:User)')
 
 where C<(n:User)> is the simple pattern for "all nodes with label
-'User'".  The module L<Neo4j::Cypher::Abstract::Pattern> handles
+'User'".  The module L<Neo4j::Cypher::Pattern> handles
 complex and arbitrary patterns. It is loaded automatically on C<use
 Neo4j::Cypher::Abstract>. Abstract patterns are written in a similar
 idiom as Cypher statements. They can be used anywhere a string is
@@ -377,7 +376,7 @@ allowed. For example:
           ->return('type(r)')
     );
 
-See L<Neo4j::Abstract::Cypher::Pattern> for a full description of how
+See L<Neo4j::Cypher::Pattern> for a full description of how
 to specify patterns.
 
 =head2 WHERE clauses

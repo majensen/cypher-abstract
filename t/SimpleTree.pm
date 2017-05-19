@@ -208,4 +208,13 @@ eq and ne are overloaded to compare the hashes of two trees.
 
 =back
 
+=head1 AUTHOR
+ Mark A. Jensen
+ CPAN: MAJENSEN
+ majensen -at- cpan -dot- org
+
+=head1 COPYRIGHT
+
+ (c) 2017 Mark A. Jensen
+
 =cut

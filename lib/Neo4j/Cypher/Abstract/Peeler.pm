@@ -529,4 +529,26 @@ sub _write_op {
   return join(' ', map { ($c=~/infix|prefix|postfix/) ? uc $_ : $_ } split /_/,$op);
 }
 
+=head1 NAME
+
+Neo4j::Cypher::Abstract::Peeler - Parse Perl structures as expressions
+
+=head1 SYNOPSIS
+
+=head1 DESCRIPTION
+
+=head1 METHODS
+
+=head1 AUTHOR
+
+ Mark A. Jensen
+ CPAN: MAJENSEN
+ majensen -at- cpan -dot- org
+
+=head1 COPYRIGHT
+
+ (c) 2017 Mark A. Jensen
+
+=cut
+
 1;
