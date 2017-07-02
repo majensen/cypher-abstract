@@ -91,7 +91,6 @@ my @handle_tests = (
         bind => [qw/3 1/],
     },
     {
-        skip => 1,
         todo => "or with undef",
         where => {
 	  requestor => { '<>', [undef, ''] }
@@ -100,7 +99,7 @@ my @handle_tests = (
         bind => [''],
       },
     {
-        todo => "and with undef",
+        done => "and with undef",
         where => {
 	  requestor => [ -and => '<>' => undef, '<>' => '']
 	 },
@@ -108,7 +107,7 @@ my @handle_tests = (
         bind => [''],
     },
     {
-        todo => "original not valid for Peeler",
+        note => "original SQL:A not valid for Peeler",
         where => 
 #	  requestor => { '<>', ['-and', undef, ''] },
 	  [ -and => {requestor => {'<>' => undef}}, {requestor => {'<>' => ''}}]
@@ -138,18 +137,9 @@ my @handle_tests = (
         bind => [qw/1 20 10/],
     },
 
-    {
-        todo => 'manage literal + binds',
-        where => {
-            foo => \["IN (?, ?)", 22, 33],
-            bar => [-and =>  \["> ?", 44], \["< ?", 55] ],
-        },
-        stmt => "( (bar > ? AND bar < ?) AND foo IN (?, ?) )",
-        bind => [44, 55, 22, 33],
-    },
 
   {
-     done =>  'this works, but requires hashes in the implicit or array',
+     done =>  'this works, but requires hashes in the implicit OR array',
         where => {
           -and => [
             user => 'nwiger',
@@ -167,17 +157,10 @@ my @handle_tests = (
     },
 
   {
-       todo => 'this is a weird one',
+       done => 'this is a weird one',
        where => { -and => [{}, { 'me.id' => '1'}] },
        stmt => "( ( me.id = ? ) )",
        bind => [ 1 ],
-   },
-
-  {
-    todo => 'manage literal + bind',
-       where => [ \[ 'foo = ?','bar' ] ],
-       stmt => "(foo = ?)",
-       bind => [ "bar" ],
    },
 
   {
@@ -190,13 +173,13 @@ my @handle_tests = (
 # Tests for -not
 # Basic tests only
   {
-           todo => "NOT should work: fix equivalence test",
+           done => "NOT should work: fix equivalence test",
         where => { -not => { a => 1 } },
         stmt  => "( (NOT a = ?) ) ",
         bind => [ 1 ],
     },
   {
-           todo => "NOT should work: fix 'mix of ops and nonops'",
+           done => "NOT should work: fix 'mix of ops and nonops'",
         where => { a => 1, -not => { b => 2 } },
         stmt  => "( ( (NOT b = ?) AND a = ? ) ) ",
         bind => [ 2, 1 ],
@@ -213,18 +196,20 @@ my @handle_tests = (
         bind => [ 1, 2, 3 ],
     },
   {
-           todo => "NOT should work: fix 'mix of ops and nonops'",
+    done => "NOT should work: fix 'mix of ops and nonops'",
+    stop => 1,
         where => { -not => { c => 3, -not => { b => 2, -not => { a => 1 } } } },
         stmt  => "( (NOT ( (NOT ( (NOT a = ?) AND b = ? )) AND c = ? )) ) ",
         bind => [ 1, 2, 3 ],
-    },
+	 },
+
 );
 
-$DB::single = 1;
 
 for my $t (@handle_tests) {
   my ($got_can, $got_peel);
   my $stmt = $t->{stmt};
+  $DB::single=1 if $t->{stop};
   if ($t->{skip}) {
     diag "skipping ($$t{stmt})";
     next;
@@ -232,7 +217,6 @@ for my $t (@handle_tests) {
   $stmt =~ s{\?}{/[0-9]+/ ? "$_" : "'$_'"}e for @{$t->{bind}};
   if (!$t->{todo}) {
     try {
-      $DB::single=1;
       ok $got_can = $o->canonize($t->{where}), 'canonize passed';
       ok $got_peel = $o->peel($got_can), 'peeled';
       1;
@@ -262,7 +246,6 @@ for my $t (@handle_tests) {
       $q->parse($got_peel);
 #      diag $stmt;
 #      diag $got_peel;
-      $DB::single=1;
       if ($p == $q) {
 	pass "equivalent";
       }
