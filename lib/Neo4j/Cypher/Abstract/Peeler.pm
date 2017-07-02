@@ -20,7 +20,7 @@ use warnings;
 # if config:bind false
 # leave tokens and identifiers as-is, no bind_values or parameters
 
-
+our $VERSION = '0.1';
 my $SQL_ABSTRACT = 1;
 
 sub puke(@);
@@ -233,6 +233,7 @@ sub canonize {
 	  }
 	  while (@flat) {
 	    my $elt = shift @flat;
+	    $DB::single=1 if !defined($elt);
 	    if (!ref $elt) { # scalar means lhs of a pair or another op
 	      push @args, $do->({$elt => shift @flat},$lhs,$op);
 	    }
@@ -320,6 +321,12 @@ sub canonize {
 	      else {
 		puke "arg type '".ref($$expr{$k})."' not expected for op '$k'";
 	      }
+	    };
+	    $is_op->($k,'predicate') && do {
+	      puke "predicate function '$k' requires an length 3 arrayref argument"
+		unless ref $$expr{$k} eq 'ARRAY';
+	      return [ $k => [$$expr{$k}->[0], $do->($$expr{$k}->[1]),
+			      $do->($$expr{$k}->[2])] ];
 	    };
 	    puke "Operator $k not expected";
 	  }
@@ -537,7 +544,143 @@ Neo4j::Cypher::Abstract::Peeler - Parse Perl structures as expressions
 
 =head1 DESCRIPTION
 
+C<Neo4j::Cypher::Abstract::Peeler> allows the user to write L<Neo4j
+Cypherhttps://neo4j.com/docs/developer-manual/current/cypher/> query
+language expressions as Perl data structures. The interpretation of
+data structures follows L<SQL::Abstract> very closely, but attempts to
+be more systematic and general.
+
+C<Peeler> only produces expressions, typically used as arguments to
+C<WHERE> clauses. It is integrated into L<Neo4j::Cypher::Abstract>,
+which produces full Cypher statements.
+
+Like L<SQL::Abstract>, C<Peeler> translates scalars, scalar refs,
+array refs, and hash refs syntactically to create expression
+components such as functions and operators. The contents of the
+scalars or references are generally operators or the arguments to
+operators or functions.
+
+Contents of scalar references are always treated as literals and
+inserted into the expression verbatim.
+
+=over
+
+=item * Functions
+
+Ordinary functions in Cypher are written as the name of the function preceded by a dash. They can be expressed as follows:
+
+ { -func => $arg }
+ [ -func => $arg ]
+ \"func($arg)"
+
+ { -sin => $pi/2 }
+ # returns sin(<value of $pi>/2)
+
+=item * Infix Operators
+
+Infix operators, like equality (C<=>), inequality (C<E<gt>E<lt>>), binary operations (C<+,-,*,/>), and certain string operators (C<-contains>, C<-starts_with>,C<ends_with>) are expressed as follows:
+
+ { $expr1 => { $infix_op => $expr2 } }
+
+ { 'n.name'  => { '<>' => 'Fred' } }
+ # returns n.name <> "Fred"
+
+This may seem like overkill, but comes in handy for...
+
+=item * AND and OR
+
+C<Peeler> implements the L<SQL::Abstract> convention that hash refs
+represent conditions joined by C<AND> and array refs represent
+conditions joined by C<OR>. Key-value pairs and array value pairs are
+interpreted as an implicit equalities to be ANDed or ORed.
+
+ { $lhs1 => $rhs1, $lhs2 => $rhs2 }
+ { al => 'king', 'eddie' => 'prince', vicky => 'queen' }
+ # returns al = "king" AND eddie = "prince" AND vicky = "queen"
+
+ [ $lhs1 => $rhs1, $lhs2 => $rhs2 ]
+ [ 'a.name' => 'Fred', 'a.name' => 'Barney']
+ # returns a.name = "Fred" OR a.name = "Barney"
+
+A single left-hand side can be "distributed" over a set of conditions,
+with corresponding conjunction:
+
+ { zzyxx => [ 'narf', 'boog', 'frelb' ] } # implicit equality, OR
+ # returns zzyxx = "narf" OR zzyxx = "boog" OR zzyxx = "frelb"
+ { zzyxx => { '<>' =>  'narf', '<>' => 'boog' } } # explicit infix, AND
+ # returns zzyxx <> "narf" AND zzyxx <> "boog"
+ { zzyxx => [ '<>' =>  'narf', -contains => 'boog' ] } # explicit infix, OR
+ # returns zzyxx <> "narf" OR zzyxx CONTAINS "boog"
+
+=item * Expressing null
+
+C<undef> can be used to express NULL mostly as in L<SQL::Abstract> so that the following are equivalent
+
+ { a.name => { '<>' => undef}, b.name => undef}
+ { -is_not_null => 'a.name', -is_null => 'b.name' }
+ # returns a.name IS NOT NULL  AND b.name IS NULL
+
+=item * Predicates: -all, -any, -none, -single, -filter
+
+These Cypher functions have the form
+
+ func(variable IN list WHERE predicate)
+
+To render these, provide an array ref of the three arguments in order:
+
+ { -all => ['x', [1,2,3], {'x' => 3}] }
+ # returns all(x IN [1,2,3] WHERE x = 3)
+
+=item List arguments
+
+=back
+
+=head2 Parameters and Bind Values
+
+Cypher parameters (which use the '$' sigil) may be included in
+expressions (with the dollar sign appropriately escaped). These are
+collected during parsing and can be reported in order with the the
+C<parameters()> method.
+
+L<SQL::Abstract> automatically collects literal values and replaces
+them with anonymous placeholders (C<?>), returning an array of values
+for binding in L<DBI>. C<Peeler> will collect values and report them
+with the C<bind_values()> method. If the config key
+C<anon_placeholder> is set:
+
+ $peeler->{config}{anon_placeholder} = '?'
+
+then C<Peeler> will also do the replacement in the final expression
+production like L<SQL::Abstract>.
+
+The real reason to pay attention to literal values is to be able to
+appropriately quote them in the final production. When
+C<anon_placeholder> is not set (default), then an attempt is made to
+correctly quote string values and such.
+
+=head1 GUTS
+
+
+
 =head1 METHODS
+
+=over
+
+=item express()
+
+=item canonize()
+
+=item peel()
+
+=item parameters()
+
+=item bind_values()
+
+=back
+
+=head1 SEE ALSO
+
+L<Neo4j::Cypher::Abstract>, L<SQL::Abstract>.
 
 =head1 AUTHOR
 
