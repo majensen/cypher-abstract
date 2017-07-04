@@ -1,4 +1,5 @@
 Build.PL
+Changes
 MANIFEST
 lib/Neo4j/Cypher/Abstract.pm
 lib/Neo4j/Cypher/Abstract/Peeler.pm
