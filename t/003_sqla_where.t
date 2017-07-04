@@ -5,19 +5,18 @@ use Try::Tiny;
 use lib '../lib';
 use lib 't';
 use lib '..';
-use t::SimpleTree;
+use t::PeelerTest;
 use strict;
 
+our $peeler;
 # $Carp::Verbose=1;
 use_ok('Neo4j::Cypher::Abstract::Peeler');
-my $o = Neo4j::Cypher::Abstract::Peeler->new();
 
 # some examples from SQL::Abstract t/02where.t
 # changes: strict dashed form for operators
-my $p = t::SimpleTree->new;
-my $q = t::SimpleTree->new;
+isa_ok $peeler, 'Neo4j::Cypher::Abstract::Peeler';
 
-my @handle_tests = (
+my @tests = (
     {
         where => {
             requestor => 'inna',
@@ -200,75 +199,7 @@ my @handle_tests = (
 	 },
 );
 
-
-for my $t (@handle_tests) {
-  my ($got_can, $got_peel);
-  my $stmt = $t->{stmt};
-  if ($t->{skip}) {
-    diag "skipping ($$t{stmt}) : $$t{skip}";
-    next;
-  }
-  $stmt =~ s{\?}{/[0-9]+/ ? "$_" : "'$_'"}e for @{$t->{bind}};
-  if (!$t->{todo}) {
-    try {
-      ok $got_can = $o->canonize($t->{where}), 'canonize passed';
-      ok $got_peel = $o->peel($got_can), 'peeled';
-      1;
-    } catch {
-      say "bad peel: $_";
-      fail;
-      1;
-    };
-  }
-  else {
-  TODO: {
-      local $TODO = $t->{todo};
-	try {
-	  ok $got_can = $o->canonize($t->{where}), 'canonize passed';
-	  ok $got_peel = $o->peel($got_can), 'peeled';
-	  1;
-	} catch {
-	  say "bad peel: $_";
-	  fail;
-	  1;
-	};
-    }
-  }
-  if ($got_peel) {
-    if ($t->{no_tree}) {
-      if ($t->{stmt2}) {
-	if ($got_peel eq $stmt or $got_peel eq $t->{stmt2}) {
-	  pass "equivalent";
-	}
-	else {
-	  fail "not equivalent";
-	}
-      }
-      else {
-	is $got_peel, $stmt, "equivalent";
-      }
-    }
-    else {
-      try {
-	$p->parse($stmt);
-	$q->parse($got_peel);
-	if ($p == $q) {
-	  pass "equivalent";
-	}
-	else {
-	  fail "not equivalent";
-	  diag $stmt;
-	  diag $got_peel;
-	}
-      } catch {
-	fail "Error in t::SimpleTree";
-	diag "on $stmt";
-	diag "could not completely reduce expression" if /Could not completely reduce/;
-      };
-    }
-  }
-  say;
-}
+test_peeler(@tests);
 
 done_testing;
 
