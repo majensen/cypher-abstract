@@ -289,7 +289,8 @@ sub DESTROY {}
 =head1 NAME
 
 Neo4j::Cypher::Abstract - Generate Cypher query statements
-=head1 SYNOPSIS 
+
+=head1 SYNOPSIS
 
 =head1 DESCRIPTION
 

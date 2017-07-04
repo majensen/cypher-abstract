@@ -559,8 +559,8 @@ Neo4j::Cypher::Abstract::Peeler - Parse Perl structures as expressions
 
 =head1 DESCRIPTION
 
-C<Neo4j::Cypher::Abstract::Peeler> allows the user to write L<Neo4j
-Cypherhttps://neo4j.com/docs/developer-manual/current/cypher/> query
+C<Neo4j::Cypher::Abstract::Peeler> allows the user to write L<Neo4j 
+Cypher|https://neo4j.com/docs/developer-manual/current/cypher/> query
 language expressions as Perl data structures. The interpretation of
 data structures follows L<SQL::Abstract> very closely, but attempts to
 be more systematic and general.
@@ -646,7 +646,7 @@ To render these, provide an array ref of the three arguments in order:
  { -all => ['x', [1,2,3], {'x' => 3}] }
  # returns all(x IN [1,2,3] WHERE x = 3)
 
-=item List arguments
+=item * List arguments
 
 =back
 
