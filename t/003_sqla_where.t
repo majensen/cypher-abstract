@@ -81,8 +81,7 @@ my @handle_tests = (
     },
 
     {
-        skip => 1,
-        todo => "This is a kludge, won't fix",
+        skip => "This is a kludge, won't fix",
         where => {
             priority  => [ {'>', 3}, {'<', 1} ],
             requestor => \'is not null',
@@ -91,37 +90,40 @@ my @handle_tests = (
         bind => [qw/3 1/],
     },
     {
-        todo => "or with undef",
+      done => "or with undef",
+      no_tree => 1,
         where => {
 	  requestor => { '<>', [undef, ''] }
         },
-        stmt => "( requestor IS NOT NULL OR requestor <> ? )",
+        stmt => "(requestor IS NOT NULL OR (requestor <> ?))",
         bind => [''],
       },
     {
-        done => "and with undef",
+      done => "and with undef",
+      no_tree => 1,
         where => {
 	  requestor => [ -and => '<>' => undef, '<>' => '']
 	 },
-        stmt => "( requestor IS NOT NULL AND requestor <> ? )",
+        stmt => "(requestor IS NOT NULL AND (requestor <> ?))",
         bind => [''],
     },
     {
-        note => "original SQL:A not valid for Peeler",
+      skip => "fix later maybe",
+      no_tree => 1,
         where => 
-#	  requestor => { '<>', ['-and', undef, ''] },
-	  [ -and => {requestor => {'<>' => undef}}, {requestor => {'<>' => ''}}]
-        ,
-        stmt => "( requestor IS NOT NULL AND requestor <> ? )",
+	  { requestor => { '<>', ['-and', undef, ''] } },
+        stmt => "(requestor IS NOT NULL AND (requestor <> ?))",
         bind => [''],
     },
 
     {
+      no_tree => 1,
         where => {
             priority  => [ {'>', 3}, {'<', 1} ],
             requestor => { '<>', undef },
         },
-        stmt => "( ( ( priority > ? ) OR ( priority < ? ) ) AND requestor IS NOT NULL )",
+      stmt => "(((priority > ?) OR (priority < ?)) AND requestor IS NOT NULL)",
+      stmt2 => "(requestor IS NOT NULL AND ((priority > 3) OR (priority < 1)))",
         bind => [qw/3 1/],
     },
 
@@ -164,28 +166,24 @@ my @handle_tests = (
    },
 
   {
-       done => "NOT should work",
        where => { -not => { -not => { -not => 'bool2' } } },
-       stmt => "( NOT ( NOT ( NOT bool2 ) ) )",
+       stmt => "( NOT ( NOT ( NOT 'bool2' ) ) )",
        bind => [],
    },
 
 # Tests for -not
 # Basic tests only
   {
-           done => "NOT should work: fix equivalence test",
         where => { -not => { a => 1 } },
         stmt  => "( (NOT a = ?) ) ",
         bind => [ 1 ],
     },
   {
-           done => "NOT should work: fix 'mix of ops and nonops'",
         where => { a => 1, -not => { b => 2 } },
         stmt  => "( ( (NOT b = ?) AND a = ? ) ) ",
         bind => [ 2, 1 ],
     },
   {
-        done  => "NOT should work",
         where => { -not => { a => 1, b => 2, c => 3 } },
         stmt  => "( (NOT ( a = ? AND b = ? AND c = ? )) ) ",
         bind => [ 1, 2, 3 ],
@@ -196,22 +194,18 @@ my @handle_tests = (
         bind => [ 1, 2, 3 ],
     },
   {
-    done => "NOT should work: fix 'mix of ops and nonops'",
-    stop => 1,
         where => { -not => { c => 3, -not => { b => 2, -not => { a => 1 } } } },
         stmt  => "( (NOT ( (NOT ( (NOT a = ?) AND b = ? )) AND c = ? )) ) ",
         bind => [ 1, 2, 3 ],
 	 },
-
 );
 
 
 for my $t (@handle_tests) {
   my ($got_can, $got_peel);
   my $stmt = $t->{stmt};
-  $DB::single=1 if $t->{stop};
   if ($t->{skip}) {
-    diag "skipping ($$t{stmt})";
+    diag "skipping ($$t{stmt}) : $$t{skip}";
     next;
   }
   $stmt =~ s{\?}{/[0-9]+/ ? "$_" : "'$_'"}e for @{$t->{bind}};
@@ -241,26 +235,39 @@ for my $t (@handle_tests) {
     }
   }
   if ($got_peel) {
-    try {
-      $p->parse($stmt);
-      $q->parse($got_peel);
-#      diag $stmt;
-#      diag $got_peel;
-      if ($p == $q) {
-	pass "equivalent";
+    if ($t->{no_tree}) {
+      if ($t->{stmt2}) {
+	if ($got_peel eq $stmt or $got_peel eq $t->{stmt2}) {
+	  pass "equivalent";
+	}
+	else {
+	  fail "not equivalent";
+	}
       }
       else {
-	fail "not equivalent";
-	diag $stmt;
-	diag $got_peel;
+	is $got_peel, $stmt, "equivalent";
       }
-    } catch {
-      diag "Error in t::SimpleTree";
-      diag "on $stmt";
-      diag "could not completely reduce expression" if /Could not completely reduce/;
-    };
-    say;
+    }
+    else {
+      try {
+	$p->parse($stmt);
+	$q->parse($got_peel);
+	if ($p == $q) {
+	  pass "equivalent";
+	}
+	else {
+	  fail "not equivalent";
+	  diag $stmt;
+	  diag $got_peel;
+	}
+      } catch {
+	fail "Error in t::SimpleTree";
+	diag "on $stmt";
+	diag "could not completely reduce expression" if /Could not completely reduce/;
+      };
+    }
   }
+  say;
 }
 
 done_testing;

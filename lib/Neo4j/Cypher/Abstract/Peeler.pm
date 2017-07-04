@@ -45,9 +45,9 @@ my %config = (
 # should be a handler with the same name
 
 my %type_table = (
-  infix_binary => [qw{
-		       - / % -in =~ = <> < > <= >=
+  infix_binary => [qw{ - / %  =~ = <> < > <= >=
 		       -contains -starts_with -ends_with}],
+  infix_listarg => [qw{ -in } ],
   infix_distributable => [qw{ + * -and -or }],
   prefix => [qw{ -not }],
   postfix => [qw{ -is_null -is_not_null }],
@@ -233,17 +233,17 @@ sub canonize {
 	  }
 	  while (@flat) {
 	    my $elt = shift @flat;
-	    $DB::single=1 if !defined($elt);
+#	    $DB::single=1 if !defined($elt);
 	    if (!ref $elt) { # scalar means lhs of a pair or another op
 	      push @args, $do->({$elt => shift @flat},$lhs,$op);
 	    }
 	    else {
 	      next if (ref $elt eq 'ARRAY') && ! scalar @$elt or
-		(ref $elt eq 'HASH') && ! scalar %$elt;
+		(ref $elt eq 'HASH') && ! scalar %$elt; 
 	      push @args, $do->($elt,undef,$op);
 	    }
 	  }
-	  return [$op => @args];
+ 	  return [$op => @args];
 	}
 	if ($is_op->($$expr[0]) and !$is_op->($$expr[0],'infix_distributable')) {
 	  # some other op
@@ -266,8 +266,8 @@ sub canonize {
 	    } @$expr ];
 	  }
 	  else {
-	    if ($arg_of and $is_op->($arg_of,'function') ||
-		  $arg_of eq '-in' # kludge
+	    if ($arg_of and ($is_op->($arg_of,'function') ||
+		  $is_op->($arg_of, 'infix_listarg'))
 	       ) {
 	      # function argument - return list itself
 	      return [ -list => map { $do->($_) } @$expr ];
@@ -288,7 +288,17 @@ sub canonize {
 	  if ($is_op->($k)) {
 	    $is_op->($k,'infix_binary') && do {
 	      puke "Expected LHS for $k" unless $lhs;
-	      if (defined $$expr{$k}) {
+	      if (ref $$expr{$k} eq 'ARRAY') {
+		# apply binary operator and join with array default op
+		return [ $self->{config}{array_op} => map {
+		  defined() ?
+		    [ $k => $lhs, $do->($_)] :
+		    { $self->{config}{ineq_op} => [-is_not_null => $lhs],
+		      $self->{config}{implicit_eq_op} => [-is_null => $lhs]
+		     }->{$k}
+		   } @{$$expr{$k}} ]
+	      }
+	      elsif (defined $$expr{$k}) {
 		return [ $k => $lhs, $do->($$expr{$k},undef,$k) ]; #?
 	      }
 	      else { # IS (NOT) NULL
@@ -303,6 +313,9 @@ sub canonize {
 	    };
 	    $is_op->($k,'function') && do {
 	      return [ $k => $do->($$expr{$k},undef,$k) ];
+	    };
+	    $is_op->($k,'infix_listarg') && do {
+	      return [ $k => $lhs, $do->($$expr{$k},undef,$k) ];
 	    };
 	    $is_op->($k,'prefix') && do {
 	      return [ $k => $do->($$expr{$k}) ];
@@ -419,6 +432,8 @@ sub infix_binary {
   }
   return '('.join(" ", $$args[0], _write_op($op), $$args[1]).')';
 }
+
+sub infix_listarg { infix_binary(@_) }
 
 sub infix_distributable {
   my ($self, $op, $args) = @_;

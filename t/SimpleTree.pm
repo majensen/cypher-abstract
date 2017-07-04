@@ -8,6 +8,7 @@ use strict;
 use warnings;
 
 my $commop = qr{^[*+]|and|x?or$}i;
+my $unary_ops = qr/^not$/;
 my $norm = { 'is not null' => 'is_not_null',
  	     'is null' => 'is_null' };
 my %match = (
@@ -16,9 +17,9 @@ my %match = (
 my $SIMP_LIMIT=10;
 
 my @preced = (
-  qr/not/, # negate
   qr/[+\/%*-]|\bin\b/, # infix
   qr/(?:[!=><]?=)|(?:<>)/, #cmp
+  qr/not/, # negate
   qr/\b(?:and)\b|\b(?:x?or)\b/, #logical
   qr/[,]/, # list separator
  );
@@ -67,7 +68,7 @@ sub parse {
        push @stack, $t, '(';
     }
     else {
-      push @stack, $t;
+	push @stack, $t;
     }
   }
 
@@ -80,18 +81,28 @@ sub _xpr { # no groups
   my (@tok) = @_;
   my @stack;
   for my $op (@preced) {
-    while ( my $t = shift @tok ) {
-      if (!ref($t) and $t =~ /$ops/) {
-	push @stack, $t;
-      }
-      else {
-	if (@stack and $stack[-1] =~ /$op/) {
-	  push @stack, [pop @stack,  pop @stack, $t]
-	}
-	else {
+    while (1) {
+      my $n = @tok;
+      while ( my $t = shift @tok ) {
+	if (!ref($t) and $t =~ /$ops/) {
 	  push @stack, $t;
 	}
+	else {
+	  if (@stack and $stack[-1] =~ /$op/) {
+	    if ($stack[-1] =~ /$unary_ops/) {
+	      push @stack, [pop @stack, $t];
+	    }
+	    else { 
+	      push @stack, [pop @stack,  pop @stack, $t];
+	    }
+	  }
+	  else {
+	    push @stack, $t;
+	  }
+	}
       }
+      last if ($n == @stack);
+      @tok = @stack; @stack = ();
     }
     @tok = @stack;
     last if @tok == 1;
@@ -115,7 +126,7 @@ sub _simp {
       my $op = $$a[0];
       my @r;
       for my $e (@{$a}[1..$#$a]) {
-	if (ref $e and $op eq $$e[0]) {
+	if (ref $e and $op eq $$e[0] and $op ne 'not') {
 	  $simp=1;
 	  push @$a, splice @$e,1;
 	  pop @$e; # now empty
