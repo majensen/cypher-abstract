@@ -1,6 +1,6 @@
 package Neo4j::Cypher::Abstract::Peeler;
 use Carp;
-use List::Util qw(all none);
+use List::Util qw(any);
 use Scalar::Util qw(looks_like_number blessed);
 use strict;
 use warnings;
@@ -267,10 +267,8 @@ sub canonize {
 	    } @$expr ];
 	  }
 	  else {
-	    if ($arg_of and ($is_op->($arg_of,'function') ||
-			       $is_op->($arg_of, 'infix_listarg') ||
-			       $is_op->($arg_of, 'predicate')
-			      )
+	    if ($arg_of and any { $is_op->($arg_of, $_) }
+		  qw/function infix_listarg predicate reduce/
 	       ) {
 	      # function argument - return list itself
 	      return [ -list => map { $do->($_) } @$expr ];
@@ -344,6 +342,15 @@ sub canonize {
 	      return [ $k => [-thing => $$expr{$k}->[0]],
 			      $do->($$expr{$k}->[1], undef, $k),
 			      $do->($$expr{$k}->[2], undef, $k) ];
+	    };
+	    $is_op->($k,'reduce') && do {
+	      puke "reduce function '$k' requires an length 5 arrayref argument"
+		unless ref $$expr{$k} eq 'ARRAY' and @{$$expr{$k}} == 5;
+	      return [ $k => [-thing => $$expr{$k}->[0]],
+		       $do->($$expr{$k}->[1], undef, $k),
+		       [-thing => $$expr{$k}->[2]],
+		       $do->($$expr{$k}->[3], undef, $k),
+		       $do->($$expr{$k}->[4], undef, $k)];
 	    };
 	    puke "Operator $k not expected";
 	  }
@@ -590,7 +597,8 @@ inserted into the expression verbatim.
 
 =item * Functions
 
-Ordinary functions in Cypher are written as the name of the function preceded by a dash. They can be expressed as follows:
+Ordinary functions in Cypher are written as the name of the function
+preceded by a dash. They can be expressed as follows:
 
  { -func => $arg }
  [ -func => $arg ]
@@ -601,7 +609,9 @@ Ordinary functions in Cypher are written as the name of the function preceded by
 
 =item * Infix Operators
 
-Infix operators, like equality (C<=>), inequality (C<E<gt>E<lt>>), binary operations (C<+,-,*,/>), and certain string operators (C<-contains>, C<-starts_with>,C<ends_with>) are expressed as follows:
+Infix operators, like equality (C<=>), inequality (C<E<gt>E<lt>>),
+binary operations (C<+,-,*,/>), and certain string operators
+(C<-contains>, C<-starts_with>,C<ends_with>) are expressed as follows:
 
  { $expr1 => { $infix_op => $expr2 } }
 
@@ -637,7 +647,8 @@ with corresponding conjunction:
 
 =item * Expressing null
 
-C<undef> can be used to express NULL mostly as in L<SQL::Abstract> so that the following are equivalent
+C<undef> can be used to express NULL mostly as in L<SQL::Abstract> so
+that the following are equivalent
 
  { a.name => { '<>' => undef}, b.name => undef}
  { -is_not_null => 'a.name', -is_null => 'b.name' }
@@ -655,6 +666,12 @@ To render these, provide an array ref of the three arguments in order:
  # returns all(x IN [1,2,3] WHERE x = 3)
 
 =item * List arguments
+
+For cypher expressions that accept lists (arrays in square brackets), use arrayrefs:
+
+ { 'n.name' => { -in => ['fred','wilma','pebbles'] }}
+ # returns n.name IN ['fred','wilma','pebbles']
+
 
 =back
 
