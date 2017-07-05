@@ -51,18 +51,20 @@ message
 C<todo> : if exists, then test is treated as a TODO with value as
 message
 
+c<no_tree> : if exists, then stmt is compared as string to peel 
+production; t::SimpleTree is not used
+
 C<stmt2> : if exists, then peeler output is compared exactly with the
 string value, and exactly with C<stmt> string value, to determine
-equivalence.  C<SimpleTree> is not used.
+equivalence.
 
 C<t/SimpleTree.pm> is used to compare the C<stmt> with the Peeler
 production, which should make it a little easier to write statments
 without concern for ordering, extra parens, and the like.
 
-Test::Peeler exports
+Test::Peeler exports:
 
  test_peeler(@tests)
-
  $peeler
 
 =cut

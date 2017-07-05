@@ -70,6 +70,7 @@ my %type_table = (
   reduce => [qw{ -reduce }],
   list => [qw( -list )], # returns args in list format
   bind => [qw( -bind )], # handles parameters and literal quoting
+  thing => [qw( -thing )], # the literal thing itself
  );
 
 my %dispatch;
@@ -267,7 +268,9 @@ sub canonize {
 	  }
 	  else {
 	    if ($arg_of and ($is_op->($arg_of,'function') ||
-		  $is_op->($arg_of, 'infix_listarg'))
+			       $is_op->($arg_of, 'infix_listarg') ||
+			       $is_op->($arg_of, 'predicate')
+			      )
 	       ) {
 	      # function argument - return list itself
 	      return [ -list => map { $do->($_) } @$expr ];
@@ -337,9 +340,10 @@ sub canonize {
 	    };
 	    $is_op->($k,'predicate') && do {
 	      puke "predicate function '$k' requires an length 3 arrayref argument"
-		unless ref $$expr{$k} eq 'ARRAY';
-	      return [ $k => [$$expr{$k}->[0], $do->($$expr{$k}->[1]),
-			      $do->($$expr{$k}->[2])] ];
+		unless ref $$expr{$k} eq 'ARRAY' and @{$$expr{$k}} == 3;
+	      return [ $k => [-thing => $$expr{$k}->[0]],
+			      $do->($$expr{$k}->[1], undef, $k),
+			      $do->($$expr{$k}->[2], undef, $k) ];
 	    };
 	    puke "Operator $k not expected";
 	  }
@@ -541,6 +545,10 @@ sub list { # special
   }
   my ($l,$r) = split '',$self->{config}{list_braces};
   return $l.join(',',@$args).$r;
+}
+
+sub thing { # special
+  return $_[2][0];
 }
 
 sub _write_op {
