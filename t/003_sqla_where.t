@@ -1,5 +1,4 @@
 use Test::More;
-use Tie::IxHash;
 use v5.10;
 use Try::Tiny;
 use lib '../lib';

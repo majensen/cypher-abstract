@@ -2,7 +2,6 @@ use Test::More;
 use lib '../lib';
 use lib 't';
 use lib '..';
-use Tie::IxHash;
 use v5.10;
 use Try::Tiny;
 use t::PeelerTest;

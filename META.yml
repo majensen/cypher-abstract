@@ -4,6 +4,7 @@ author:
   - 'Mark A. Jensen'
 build_requires:
   Tie::IxHash: '0'
+  Try::Tiny: '0'
 configure_requires:
   Module::Build: '0'
 dynamic_config: 1
@@ -16,10 +17,18 @@ name: Neo4j-Cypher-Abstract
 provides:
   Neo4j::Cypher::Abstract:
     file: lib/Neo4j/Cypher/Abstract.pm
-    version: '0.01'
+    version: '0.1000'
   Neo4j::Cypher::Abstract::Peeler:
     file: lib/Neo4j/Cypher/Abstract/Peeler.pm
+    version: '0.1000'
   Neo4j::Cypher::Pattern:
     file: lib/Neo4j/Cypher/Pattern.pm
-version: '0.01'
-x_serialization_backend: 'CPAN::Meta::YAML version 0.012'
+    version: '0.1000'
+requires:
+  List::Util: '0'
+  Scalar::Util: '0'
+resources:
+  bugtracker: http://rt.cpan.org/Public/Dist/Display.html?Name=Neo4j-Cypher-Abstract
+  repository: http://github.com/majensen/cypher-abstract.git
+version: '0.1000'
+x_serialization_backend: 'CPAN::Meta::YAML version 0.018'

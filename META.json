@@ -16,28 +16,45 @@
    "prereqs" : {
       "build" : {
          "requires" : {
-            "Tie::IxHash" : "0"
+            "Tie::IxHash" : "0",
+            "Try::Tiny" : "0"
          }
       },
       "configure" : {
          "requires" : {
             "Module::Build" : "0"
          }
+      },
+      "runtime" : {
+         "requires" : {
+            "List::Util" : "0",
+            "Scalar::Util" : "0"
+         }
       }
    },
    "provides" : {
       "Neo4j::Cypher::Abstract" : {
          "file" : "lib/Neo4j/Cypher/Abstract.pm",
-         "version" : "0.01"
+         "version" : "0.1000"
       },
       "Neo4j::Cypher::Abstract::Peeler" : {
-         "file" : "lib/Neo4j/Cypher/Abstract/Peeler.pm"
+         "file" : "lib/Neo4j/Cypher/Abstract/Peeler.pm",
+         "version" : "0.1000"
       },
       "Neo4j::Cypher::Pattern" : {
-         "file" : "lib/Neo4j/Cypher/Pattern.pm"
+         "file" : "lib/Neo4j/Cypher/Pattern.pm",
+         "version" : "0.1000"
       }
    },
    "release_status" : "stable",
-   "version" : "0.01",
-   "x_serialization_backend" : "JSON::PP version 2.27400"
+   "resources" : {
+      "bugtracker" : {
+         "web" : "http://rt.cpan.org/Public/Dist/Display.html?Name=Neo4j-Cypher-Abstract"
+      },
+      "repository" : {
+         "url" : "http://github.com/majensen/cypher-abstract.git"
+      }
+   },
+   "version" : "0.1000",
+   "x_serialization_backend" : "JSON::PP version 2.27300_01"
 }
