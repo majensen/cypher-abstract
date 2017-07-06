@@ -20,7 +20,7 @@ use warnings;
 # if config:bind false
 # leave tokens and identifiers as-is, no bind_values or parameters
 
-our $VERSION = '0.1';
+our $VERSION = '0.1000';
 my $SQL_ABSTRACT = 1;
 
 sub puke(@);
@@ -206,9 +206,24 @@ sub canonize {
 	}
       };
       /REF|SCALAR/ && do { # literals
-	($_ eq 'SCALAR') && return $$expr ; # never bind
-	(ref $$expr eq 'ARRAY') && return
-	  $self->{config}{bind} ? [ -bind => $$expr ] : $$expr->[0]; #
+	if ($_ eq 'SCALAR') {
+	  return [-thing => $$expr] ; # never bind
+	}
+	elsif (ref $$expr eq 'ARRAY') {
+	  # very SQL:A thing, but we'll do it
+	  my @a = @$$expr;
+	  my $thing = shift @a;
+	  @a = map { $self->_quote_lit($_) } @a;
+	  if ($self->{config}{bind}) {
+	    push @{$self->{bind_values}}, @a;
+	  }
+	  else {
+	    if ($self->{config}{anon_placeholder}) {
+	      ($thing =~ s/\Q$$self{config}{anon_placeholder}\E/$_/) for @a;
+	    }
+	  }
+	  return $lhs ? [-thing => $lhs, [-thing => $thing]] : [-thing => $thing];
+	}
       };
       /ARRAY/ && do {
 	if ($is_op->($$expr[0],'infix_distributable')) {
@@ -241,7 +256,7 @@ sub canonize {
 	    else {
 	      next if (ref $elt eq 'ARRAY') && ! scalar @$elt or
 		(ref $elt eq 'HASH') && ! scalar %$elt; 
-	      push @args, $do->($elt,undef,$op);
+	      push @args, $do->($elt,$lhs,$op);
 	    }
 	  }
  	  return [$op => @args];
@@ -354,8 +369,7 @@ sub canonize {
 	    };
 	    puke "Operator $k not expected";
 	  }
-	  elsif (ref($$expr{$k}) &&
-		   ref($$expr{$k}) !~ /^REF|SCALAR$/) {
+	  elsif (ref($$expr{$k}) && ref($$expr{$k}) ne 'SCALAR') {
 	    # $k is an LHS
 	    return $do->($$expr{$k}, $k, undef);
 	  }
@@ -376,15 +390,9 @@ sub canonize {
 	    if ( $is_op->($k, 'infix_binary') ) {
 	      puke "No LHS provided for implicit $$self{config}{hash_op}" unless defined $lhs;
 	      push @args, $do->({$k => $$expr{$k}},$lhs);
-	      # return [ $self->{config}{hash_op} => map {
-	      #   [ $_ => $lhs, $do->($$expr{$_},undef,$self->{config}{hash_op}) ]
-	      # } @k ];
 	    }
 	    elsif ( $is_op->($k, 'prefix') || $is_op->($k,'function') ) {
 		push @args, [ $k => $do->($$expr{$k},undef, $k) ];
-		# return [ $self->{config}{hash_op} =>
-		# 	       map { $do->( { $_ => $$expr{$_} },undef,undef ) } @k
-		# 	      ];
 	      }
 	      elsif (!$is_op->($k)) {
 		push @args, $do->({$k => $$expr{$k}});
@@ -525,6 +533,11 @@ sub reduce {
   return _write_op($op)."("."$$args[0] = $$args[1], $$args[2] IN $$args[3] | $$args[4]".")";
 }
 
+# bind either:
+# - pulls out literals, pushes them into {bind_values}, and replaces them
+#   with '?' in the produced statement (a la SQL:A), -or-
+# - identifies named parameters in the expression and pushes these into
+#   {parameters}, leaving them in the produced statement
 sub bind { # special
   my ($self, $op, $args) = @_;
   unless ($op and $args and !ref($op)
@@ -555,7 +568,8 @@ sub list { # special
 }
 
 sub thing { # special
-  return $_[2][0];
+  my ($self, $op, $args) = @_;
+  return join(' ',@$args);
 }
 
 sub _write_op {
