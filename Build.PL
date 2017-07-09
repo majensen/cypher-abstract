@@ -6,7 +6,7 @@ $build = Module::Build->new(
   dist_abstract => 'Generate Cypher queries in Perl',
   requires => {
     'Scalar::Util' => 0,
-    'List::Util' => 0
+    'List::Util' => '1.33'
    },
   configure_requires => {
     'Module::Build' => 0
@@ -21,6 +21,7 @@ $build = Module::Build->new(
       repository  => 'http://github.com/majensen/cypher-abstract.git',
     }
    },
-  perl => 5.010
+  perl => 5.010,
+  license => 'perl'
 );
 $build->create_build_script;

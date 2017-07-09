@@ -1,6 +1,6 @@
 package Neo4j::Cypher::Abstract::Peeler;
 use Carp;
-use List::Util qw(any);
+use List::Util 1.33 qw(any);
 use Scalar::Util qw(looks_like_number blessed);
 use strict;
 use warnings;
@@ -20,7 +20,7 @@ use warnings;
 # if config:bind false
 # leave tokens and identifiers as-is, no bind_values or parameters
 
-our $VERSION = '0.1000';
+our $VERSION = '0.1001';
 my $SQL_ABSTRACT = 1;
 
 sub puke(@);
@@ -588,7 +588,7 @@ Neo4j::Cypher::Abstract::Peeler - Parse Perl structures as expressions
 
 =head1 DESCRIPTION
 
-C<Neo4j::Cypher::Abstract::Peeler> allows the user to write L<Neo4j 
+C<Neo4j::Cypher::Abstract::Peeler> allows the user to write L<Neo4j
 Cypher|https://neo4j.com/docs/developer-manual/current/cypher/> query
 language expressions as Perl data structures. The interpretation of
 data structures follows L<SQL::Abstract> very closely, but attempts to
@@ -623,9 +623,9 @@ preceded by a dash. They can be expressed as follows:
 
 =item * Infix Operators
 
-Infix operators, like equality (C<=>), inequality (C<E<gt>E<lt>>),
+Infix operators, like equality (C<=>), inequality (C<E<lt>E<gt>>),
 binary operations (C<+,-,*,/>), and certain string operators
-(C<-contains>, C<-starts_with>,C<ends_with>) are expressed as follows:
+(C<-contains>, C<-starts_with>, C<ends_with>) are expressed as follows:
 
  { $expr1 => { $infix_op => $expr2 } }
 
@@ -686,7 +686,6 @@ For cypher expressions that accept lists (arrays in square brackets), use arrayr
  { 'n.name' => { -in => ['fred','wilma','pebbles'] }}
  # returns n.name IN ['fred','wilma','pebbles']
 
-
 =back
 
 =head2 Parameters and Bind Values
@@ -714,7 +713,11 @@ correctly quote string values and such.
 
 =head1 GUTS
 
+ TBD
 
+=head2 The config hash
+
+ TBD
 
 =head1 METHODS
 
@@ -722,13 +725,24 @@ correctly quote string values and such.
 
 =item express()
 
+Canonize, then peel.
+
 =item canonize()
+
+Render SQL:A-like expression into a canonical lisp-like array tree.
 
 =item peel()
 
+Render a canonical tree as a Cypher string expression
+
 =item parameters()
 
+Get a list in order of all named parameters.
+
 =item bind_values()
+
+Get a list of bind values in order that were replaced by the anonymous
+placeholder.
 
 =back
 

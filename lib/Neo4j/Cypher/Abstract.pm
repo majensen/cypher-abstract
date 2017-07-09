@@ -18,7 +18,7 @@ our $AUTOLOAD;
 sub puke(@);
 sub belch(@);
 
-our $VERSION='0.1000';
+our $VERSION='0.1001';
 
 # let an Abstract object keep its own stacks of clauses
 # rather than clearing an existing Abstract object, get

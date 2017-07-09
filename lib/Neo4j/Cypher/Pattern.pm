@@ -5,7 +5,7 @@ use strict;
 use warnings;
 use overload '""' => 'as_string';
 
-our $VERSION = '0.1000';
+our $VERSION = '0.1001';
 our @EXPORT_OK = qw/pattern ptn/;
 
 sub puke(@);

@@ -1,6 +1,8 @@
 Build.PL
 Changes
 MANIFEST
+LICENSE
+README
 lib/Neo4j/Cypher/Abstract.pm
 lib/Neo4j/Cypher/Abstract/Peeler.pm
 lib/Neo4j/Cypher/Pattern.pm
