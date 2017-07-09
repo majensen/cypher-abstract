@@ -2,6 +2,8 @@
 
 Neo4j::Cypher::Abstract - Generate Cypher query statements
 
+[![Build Status](https://travis-ci.org/majensen/cypher-abstract.svg?branch=master)](https://travis-ci.org/majensen/cypher-abstract)
+
 # SYNOPSIS
 
  TBD
