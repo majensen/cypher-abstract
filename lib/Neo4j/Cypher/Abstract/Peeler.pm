@@ -31,9 +31,9 @@ my %config = (
   implicit_eq_op => '=',
   quote_lit => "'",
   esc_quote_lit => "\\",
-  parameter_sigil => qw/^([:$?])|({[^}]+}$)/,
+  parameter_sigil => qr/^([:$?])|({[^}]+}$)/,
   quote_fld => undef,
-  safe_identifier => qw/[a-zA-Z_.]+/
+  safe_identifier => qr/[a-zA-Z_.]+/
 );
 
 # for each operator type (key in %type_table), there
