@@ -26,7 +26,7 @@ my @tests = (
     done => 'quote a uuid that starts with 0',
     no_tree => 1,
     where => { 'r.id' => '0b5bda92-5cd2-4b62-9350-5a46c3296a35' },
-    stmt => "(r.id = '0b5bda92-5cd2-4b62-9350-5a46c3296a35)'"
+    stmt => "(r.id = '0b5bda92-5cd2-4b62-9350-5a46c3296a35')"
    },
   {
     todo => 'reduce with function',
