@@ -31,7 +31,7 @@ my %config = (
   implicit_eq_op => '=',
   quote_lit => "'",
   esc_quote_lit => "\\",
-  parameter_sigil => qr/^([:$?])|({[^}]+}$)/,
+  parameter_sigil => qr/^([:?$])|({[^}]+}$)/, # ...[:$?]... gets interpolated
   quote_fld => undef,
   safe_identifier => qr/[a-zA-Z_.]+/
 );
