@@ -165,6 +165,7 @@ sub as_string {
 
 sub _quote {
   return $_[1] if (
+    ! defined ($_[1]) or
     ($_[0]->{no_quote} and $_[1] =~ $_[0]->{no_quote}) or
       $_[1] =~ /(?:^|\s)\$/ # no quote parameters
      );
