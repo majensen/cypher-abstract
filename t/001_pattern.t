@@ -18,7 +18,7 @@ $p->clear;
 is $p->node("a:boog")->as_string, "(a:boog)";
 $p->clear;
 %props = (foo=>"bar",baz=>1);
-is $p->node("a", ["boog"], \%props)->as_string, "(a:boog {foo:'bar',baz:'1'})",$p->as_string;
+is $p->node("a", ["boog"], \%props)->as_string, "(a:boog {foo:'bar',baz:1})",$p->as_string;
 $p->clear;
 is $p->node("n", {foo=>"this has 'quotes'"})->as_string, "(n {foo:'this has \\'quotes\\''})",$p->as_string;
 
@@ -50,4 +50,6 @@ is "$p", '(a:boog:goob)-[r:TYPE*..3 {foo:\'bar\'}]->(b)', $p->as_string;
 $p->clear;
 is $p->N("a")->R("<",{foo=>"bar"})->N()->as_string, '(a)<-[{foo:\'bar\'}]-()', $p->as_string;
 
+$p->clear;
+is $p->N("n:goob" => {hey => 1})->as_string, '(n:goob {hey:1})', $p->as_string;
 done_testing;

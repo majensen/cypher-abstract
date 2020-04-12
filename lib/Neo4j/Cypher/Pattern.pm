@@ -1,5 +1,6 @@
 package Neo4j::Cypher::Pattern;
 use base Exporter;
+use Scalar::Util qw/looks_like_number/;
 use Carp;
 use strict;
 use warnings;
@@ -166,7 +167,8 @@ sub as_string {
 sub _quote {
   return $_[1] if (
     ! defined ($_[1]) or
-    ($_[0]->{no_quote} and $_[1] =~ $_[0]->{no_quote}) or
+      ($_[0]->{no_quote} and $_[1] =~ $_[0]->{no_quote}) or
+      looks_like_number $_[1] or
       $_[1] =~ /(?:^|\s)\$/ # no quote parameters
      );
   return ${$_[1]} if (ref $_[1] eq 'SCALAR');
